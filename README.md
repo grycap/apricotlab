@@ -1,8 +1,8 @@
 # apricot
 
 [![Github Actions Status](https://github.com/AntonioSanch3z/apricotLab/workflows/Build/badge.svg)](https://github.com/AntonioSanch3z/apricotLab/actions/workflows/build.yml)
-
-A ri cot.
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/AntonioSanch3z/apricotLab/main?urlpath=lab)
+Advanced Platform for Reproducible Infrastructure in the Cloud via Open Tools.
 
 ## Requirements
 

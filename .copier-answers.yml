@@ -5,13 +5,14 @@ author_email: asanchez@i3m.upv.es
 author_name: Antonio Sanchez
 data_format: string
 file_extension: ''
-has_binder: false
+has_binder: true
 has_settings: false
 kind: frontend
 labextension_name: apricot
 mimetype: ''
 mimetype_name: ''
-project_short_description: A ri cot.
+project_short_description: Advanced Platform for Reproducible Infrastructure in the
+    Cloud via Open Tools.
 python_name: apricot
 repository: https://github.com/AntonioSanch3z/apricotLab
 test: false
