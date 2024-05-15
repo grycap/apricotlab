@@ -3,7 +3,7 @@ import { NotebookPanel, INotebookModel } from '@jupyterlab/notebook';
 import { DocumentRegistry } from '@jupyterlab/docregistry';
 import { IDisposable } from '@lumino/disposable';
 import { Widget } from '@lumino/widgets';
-import { deployChooseProvider } from './deploymentLogic';
+import { DeploymentLogic } from './deploymentLogic';
 
 export class ButtonExtension implements DocumentRegistry.IWidgetExtension<NotebookPanel, INotebookModel> {
 
@@ -37,34 +37,32 @@ export class ButtonExtension implements DocumentRegistry.IWidgetExtension<Notebo
     private openDeploymentDialog(): void {
         // Create a container element for the dialog content
         const dialogContent = document.createElement('div');
-    
+
         // Call deployChooseProvider to append buttons to dialogContent
-        deployChooseProvider(dialogContent);
+        DeploymentLogic.deployChooseProvider(dialogContent);
 
         // Create a widget from the dialog content
         const contentWidget = new Widget({ node: dialogContent })
-    
+
         const dialog = new Dialog({
             title: 'Deploy Infrastructure',
             body: contentWidget,
             buttons: [Dialog.cancelButton(), Dialog.okButton()]
         });
-    
+
         // Handle form submission
         dialog.launch().then(result => {
-            if (result.button.accept) {
-                // Logic to handle form submission
-                console.log('Form submitted');
-            }
+            // Logic to handle form submission
+            console.log('Form submitted');
         });
+
     }
-    
+
 
     private openListDeploymentsDialog(): void {
         const dialog = new Dialog({
             title: 'Deployments List',
             body: '', // Create and append table elements here
-            buttons: [Dialog.okButton()]
         });
         dialog.launch();
     }
