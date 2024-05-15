@@ -75,7 +75,7 @@ export module DeploymentLogic {
         });
     };
     
-    const addFormInput = (form: HTMLFormElement, labelText: string, inputId: string, value: string = '', type: string = 'text'): void => {
+    const addFormInput = (form: HTMLFormElement, labelText: string, inputId: string, value: string = '', type: string = 'text', p0?: string): void => {
         const label = document.createElement('label');
         label.textContent = labelText;
         form.appendChild(label);
@@ -266,7 +266,7 @@ export module DeploymentLogic {
                 addFormInput(form, 'Password:', 'password', deployInfo.password, 'password');
                 addFormInput(form, 'Host and port:', 'host', deployInfo.host);
                 break;
-    
+
             case 'OpenStack':
                 text = `<p>Introduce OST credentials.</p><br>`;
                 addFormInput(form, 'Username:', 'username', deployInfo.username);
@@ -278,7 +278,60 @@ export module DeploymentLogic {
 
         form.insertAdjacentHTML('afterbegin', text);
 
-        //updateDialogButtons(['Back', 'Next'],  [deployRecipeType.toString()]);
+        // Create "Next" button
+        const nextButton = createButton('Next', () => {
+            const AWSzone = (document.getElementById('availabilityZoneIn') as HTMLInputElement).value;
+            const AMI = (document.getElementById('amiIn') as HTMLInputElement).value;
+            const imageURL = "aws://" + AWSzone + "/" + AMI;
+
+            deployInfo.worker.image = imageURL;
+            if (deployInfo.recipe === "Simple-node-disk") {
+                deployInfo.port = (document.getElementById('infrastructurePort') as HTMLInputElement).value.toString();
+            }
+            deployInfraConfiguration(dialogBody);
+        });
+        dialogBody.appendChild(nextButton);
+    };
+
+    const deployInfraConfiguration = (dialogBody: HTMLElement): void => {
+        clearDialogBody(dialogBody);
+        const form = document.createElement('form');
+        dialogBody.appendChild(form);
+    
+        const introParagraph = document.createElement('p');
+        introParagraph.textContent = "Introduce worker VM specifications.";
+        form.appendChild(introParagraph);
+    
+        addFormInput(form, 'Infrastructure name:', 'infrastructureName', deployInfo.infName);
+        addFormInput(form, 'Number of VMs:', 'infrastructureWorkers', '1', 'number', '1');
+        addFormInput(form, 'Number of CPUs for each VM:', 'infrastructureCPUs', '1', 'number', '1');
+        addFormInput(form, 'Memory for each VM:', 'infrastructureMem', '2 GB');
+        addFormInput(form, 'Size of the root disk of the VM(s):', 'infrastructureDiskSize', '20 GB');
+        addFormInput(form, 'Number of GPUs for each VM:', 'infrastructureGPUs', '1', 'number', '1');
+    
+        const backBtn = createButton('Back', () => deployProviderCredentials(dialogBody));
+        const nextBtn = createButton(deployInfo.childs.length === 0 ? "Deploy" : "Next", () => {
+            deployInfo.infName = getInputValue('infrastructureName');
+            deployInfo.worker.num_instances = parseInt(getInputValue('infrastructureWorkers'));
+            deployInfo.worker.num_cpus = parseInt(getInputValue('infrastructureCPUs'));
+            deployInfo.worker.mem_size = getInputValue('infrastructureMem');
+            deployInfo.worker.disk_size = getInputValue('infrastructureDiskSize');
+            deployInfo.worker.num_gpus = parseInt(getInputValue('infrastructureGPUs'));
+    
+            if (deployInfo.childs.length === 0) {
+                //deployFinalRecipe();
+            } else {
+                //deployChildsConfiguration();
+            }
+        });
+    
+        dialogBody.appendChild(backBtn);
+        dialogBody.appendChild(nextBtn);
+    };
+
+    function getInputValue(inputId: string): string {
+        const input = document.getElementById(inputId) as HTMLInputElement;
+        return input.value;
     };
 
 }
