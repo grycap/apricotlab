@@ -57,6 +57,7 @@
     "dependencies": {
         "@jupyterlab/application": "^4.2.0",
         "@jupyterlab/notebook": "^4.2.0",
+        "base": "^3.0.0",
         "react": "^18.2.0",
         "webpack": "^5.0.0"
     },
