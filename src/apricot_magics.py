@@ -437,7 +437,6 @@ class Apricot_Magics(Magics):
 
         words = [word for word in code.split() if word]
         word1 = words[0]
-        user_cmd = " ".join(words[1:])
 
         if word1 in {"exec", "execAsync"}:
             if len(words) < 4:
