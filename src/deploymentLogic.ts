@@ -1,5 +1,6 @@
 import * as jsyaml from 'js-yaml';
 import { ContentsManager } from '@jupyterlab/services';
+import { KernelManager } from '@jupyterlab/services';
 
 export module DeploymentLogic {
 
@@ -32,11 +33,18 @@ export module DeploymentLogic {
         value?: any;
     }
 
-    interface UserInput {
-        inputs: { [key: string]: TemplateInput };
-        nodeTemplates: { [key: string]: any };
-        outputs: { [key: string]: any };
-    }
+    type UserInput = {
+        name: string;
+        inputs: {
+            [key: string]: {
+                description: string;
+                default: any;
+                value: any;
+            };
+        };
+        nodeTemplates: any;
+        outputs: any;
+    };
 
     interface InfrastructureData {
         name: string;
@@ -53,10 +61,10 @@ export module DeploymentLogic {
         recipe: '',
         id: '',
         deploymentType: '',
-        host: '',
+        host: 'ramses.i3m.upv.es:2633',
         tenant: '',
-        username: '',
-        password: '',
+        username: 'asanchez',
+        password: 'RamsesOpenNebula9',
         port: '',
         infName: 'infra-name',
         worker: {
@@ -71,7 +79,6 @@ export module DeploymentLogic {
     };
 
     let deploying = false; // Flag to prevent multiple deployments at the same time
-    const Jupyter = require('@jupyterlab/application');
 
     //*****************//
     //* Aux functions *//
@@ -153,7 +160,6 @@ export module DeploymentLogic {
                         deployInfo.deploymentType = 'OpenStack';
                         break;
                     default:
-                        // Handle unsupported provider
                         console.error('Unsupported provider:', provider);
                         return;
                 }
@@ -305,23 +311,23 @@ export module DeploymentLogic {
         const nextButton = createButton('Next', () => {
             switch (deployInfo.deploymentType) {
                 case 'EC2':
-                    const AWSzone = (document.getElementById('availabilityZoneIn') as HTMLInputElement).value;
-                    const AMI = (document.getElementById('amiIn') as HTMLInputElement).value;
+                    const AWSzone = getInputValue('availabilityZoneIn');
+                    const AMI = getInputValue('amiIn');
                     const imageURL = "aws://" + AWSzone + "/" + AMI;
                     deployInfo.worker.image = imageURL;
                     //deployInfo.worker.image = `aws://${AWSzone}/${AMI}`;
 
                     if (deployInfo.recipe === "Simple-node-disk") {
-                        deployInfo.port = (document.getElementById('infrastructurePort') as HTMLInputElement).value;
+                        deployInfo.port = getInputValue('infrastructurePort');
                     }
                     break;
                 case 'OpenNebula':
                 case 'OpenStack':
-                    deployInfo.username = (document.getElementById('username') as HTMLInputElement).value;
-                    deployInfo.password = (document.getElementById('password') as HTMLInputElement).value;
-                    deployInfo.host = (document.getElementById('host') as HTMLInputElement).value;
+                    deployInfo.username = getInputValue('username');
+                    deployInfo.password = getInputValue('password');
+                    deployInfo.host = getInputValue('host');
                     if (deployInfo.deploymentType === 'OpenStack') {
-                        deployInfo.tenant = (document.getElementById('tenant') as HTMLInputElement).value;
+                        deployInfo.tenant = getInputValue('tenant');
                     }
                     break;
             }
@@ -389,7 +395,7 @@ export module DeploymentLogic {
         const backBtn = createButton('Back', () => deployProviderCredentials(dialogBody));
         const nextButton = createButton('Deploy', async () => {
             const contentsManager = new ContentsManager();
-            const userInputs = await Promise.all(forms.map(async formData => {
+            const userInputs = (await Promise.all(forms.map(async formData => {
                 const form = formData.form;
                 const childName = form.id.replace('form-', '');
 
@@ -426,7 +432,8 @@ export module DeploymentLogic {
                     console.error(`Error: recipeInputs is null or undefined for ${childName}.yaml`);
                     return null; // or handle the error in another appropriate way
                 }
-            }));
+            }))).filter((input): input is UserInput => input !== null); // Filter out null values
+
             deployFinalRecipe(dialogBody, userInputs, nodeTemplates, outputs);
         });
 
@@ -514,9 +521,14 @@ export module DeploymentLogic {
             nodeTemplates,
             outputs
         };
-    }
+    };
 
-    async function deployFinalRecipe(dialogBody: HTMLElement, populatedTemplates?: any[], nodeTemplates?: any[], outputs?: any[]): Promise<void> {
+    async function deployFinalRecipe(
+        dialogBody: HTMLElement,
+        populatedTemplates: UserInput[] = [],
+        nodeTemplates: any[] = [],
+        outputs: any[] = []
+    ): Promise<void> {
         // Clear dialog
         dialogBody.innerHTML = '';
 
@@ -530,8 +542,8 @@ export module DeploymentLogic {
         try {
             // Load constant template
             const contentsManager = new ContentsManager();
-            const file = await contentsManager.get(`templates/simple-node-disk.yaml`);
-            const yamlContentFromFile = file.content as string;
+            const file = await contentsManager.get('templates/simple-node-disk.yaml');
+            const yamlContentFromFile = file.content;
             const parsedConstantTemplate = jsyaml.load(yamlContentFromFile) as any;
 
             // Add infra_name field and a hash to metadata field
@@ -540,7 +552,7 @@ export module DeploymentLogic {
             parsedConstantTemplate.metadata.infra_name = `jupyter_${hash}`;
 
             // Populate constant template with worker values
-            const workerInputs = parsedConstantTemplate.topology_template.inputs as any; // Cast to any
+            const workerInputs = parsedConstantTemplate.topology_template.inputs;
             Object.keys(deployInfo.worker).forEach(key => {
                 if (workerInputs.hasOwnProperty(key)) {
                     // Update the default value of the existing input
@@ -556,7 +568,6 @@ export module DeploymentLogic {
 
             // Merge constant template with populated templates
             const mergedTemplate = await mergeTOSCARecipes(parsedConstantTemplate, populatedTemplates, nodeTemplates, outputs);
-
             const yamlContent = jsyaml.dump(mergedTemplate);
 
             // Create deploy script
@@ -565,34 +576,44 @@ export module DeploymentLogic {
             // Show loading spinner
             dialogBody.innerHTML = '<div class="loader"></div>';
 
-            const kernelOutput = await new Promise<string>((resolve, reject) => {
-                const handleKernelOutput = (data: any) => {
-                    const pubtext = data.content.text.replace('\r', '\n');
-                    resolve(pubtext);
-                };
+            // Execute kernel to get output
+            const kernelManager = new KernelManager();
+            const kernel = await kernelManager.startNew();
+            const future = kernel.requestExecute({ code: cmdDeployIMCommand });
 
+            future.onIOPub = (msg) => {
+                if (msg.header.msg_type === 'stream' || msg.header.msg_type === 'execute_result') {
+                    const content = msg.content as any;
+                    const output = content.text || (content.data && content.data['text/plain']);
+                    handleKernelOutput(output);
+                }
+            };
 
-                Jupyter.notebook.kernel.execute(cmdDeployIMCommand, {
-                    iopub: { output: handleKernelOutput }
-                });
+            future.done.then(() => {
+                deploying = false;
+                kernel.shutdown();
+            }).catch((error) => {
+                console.error('Error deploying infrastructure:', error);
+                deploying = false;
+                kernel.shutdown();
             });
 
-            if (kernelOutput.toLowerCase().includes('error')) {
-                deploying = false;
-                alert(kernelOutput);
-                console.log(kernelOutput);
+        } catch (error) {
+            console.error('Error deploying infrastructure:', error);
+            deploying = false;
+        }
+
+        async function handleKernelOutput(output: string) {
+            if (output.includes('error')) {
+                alert('Error deploying infrastructure');
                 if (deployInfo.childs.length === 0) {
                     deployInfraConfiguration(dialogBody);
                 } else {
                     deployChildsConfiguration(dialogBody);
                 }
             } else {
-                deploying = false;
-                alert(kernelOutput);
-                console.log(kernelOutput);
-
                 // Extract infrastructure ID
-                const idMatch = kernelOutput.match(/ID: ([\w-]+)/);
+                const idMatch = output.match(/ID: ([\w-]+)/);
                 const infrastructureID = idMatch ? idMatch[1] : '';
 
                 // Create a JSON object
@@ -608,47 +629,44 @@ export module DeploymentLogic {
                 };
 
                 const cmdSaveToInfrastructureList = saveToInfrastructureList(jsonObj);
-                await Jupyter.notebook.kernel.execute(cmdSaveToInfrastructureList);
+                cmdSaveToInfrastructureList;
             }
-
-        } catch (error) {
-            console.error('Error deploying infrastructure:', error);
-            deploying = false;
         }
     }
 
-    function deployIMCommand(obj: any, mergedTemplate: string): string {
+
+    function deployIMCommand(obj: DeployInfo, mergedTemplate: string): string {
         const pipeAuth = `${obj.infName}-auth-pipe`;
         const imageRADL = obj.infName;
         const templatePath = `~/.imclient/templates/${imageRADL}.yaml`;
-
-        let cmd = `%%bash
+    
+        let cmd = `#!/bin/bash
     PWD=$(pwd)
-    # Remove pipes if exist
-    rm -f $PWD/${pipeAuth}
+    # Remove pipes if they exist
+    rm -f $PWD/${pipeAuth} &> /dev/null
     # Create directory for templates
-    mkdir -p ~/.imclient/templates
+    mkdir -p $PWD/templates &> /dev/null
     # Create pipes
     mkfifo $PWD/${pipeAuth}
     # Save mergedTemplate as a YAML file
     echo '${mergedTemplate}' > ${templatePath}
     `;
-
+    
         // Command to create the IM-cli credentials
         let authContent = `id = im; type = InfrastructureManager; username = user; password = pass;\n`;
-        authContent += `id = ${obj.id}; type = ${obj.deploymentType}; host = ${obj.host}; username = ${obj.user}; password = ${obj.credential};`;
-
+        authContent += `id = ${obj.id}; type = ${obj.deploymentType}; host = ${obj.host}; username = ${obj.username}; password = ${obj.password};`;
+    
         if (obj.deploymentType === 'OpenStack') {
             authContent += ` tenant = ${obj.tenant};`;
         } else if (obj.deploymentType === 'AWS') {
             authContent += ` image = ${obj.worker.image};`;
         }
-
+    
         cmd += `echo -e "${authContent}" > $PWD/${pipeAuth} &
     # Create final command where the output is stored in "imOut"
     imOut=$(python3 /usr/local/bin/im_client.py -a $PWD/${pipeAuth} create ${templatePath} -r https://im.egi.eu/im)
     # Remove pipe
-    rm -f $PWD/${pipeAuth}
+    rm -f $PWD/${pipeAuth} &> /dev/null
     # Print IM output on stderr or stdout
     if [ $? -ne 0 ]; then
         >&2 echo -e $imOut
@@ -657,21 +675,22 @@ export module DeploymentLogic {
         echo -e $imOut
     fi
     `;
-
+    
         console.log("cmd", cmd);
         return cmd;
     }
 
-
-    const saveToInfrastructureList = (obj: InfrastructureData) => {
-        const filePath = `${process.env.PWD}/apricot_plugin/infrastructuresList.json`;
-
+    const saveToInfrastructureList = (obj: InfrastructureData): string => {
+        // Define the file path
+        const filePath = "$PWD/infrastructuresList.json";
+    
+        // Construct the bash command
         const cmd = `
-            existingJson=$(cat "${filePath}" || echo '{"infrastructures": []}')
-            newJson=$(echo "$existingJson" | jq ".infrastructures += [${JSON.stringify(obj)}]")
-            echo "$newJson" > "${filePath}"
+            existingJson=$(cat ${filePath})
+            newJson=$(echo $existingJson | jq '.infrastructures += [${JSON.stringify(obj).replace(/"/g, '\\"')}]')
+            echo $newJson > ${filePath}
         `;
-
+    
         console.log("cmd", cmd);
         return cmd;
     };
@@ -682,7 +701,7 @@ export module DeploymentLogic {
         const hashArray = Array.from(new Uint8Array(hashBuffer));
         const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
         return hashHex;
-    }
+    };
 
     async function mergeTOSCARecipes(
         parsedConstantTemplate: any,
@@ -753,6 +772,5 @@ export module DeploymentLogic {
             console.error("Error merging TOSCA recipes:", error);
             return JSON.parse(JSON.stringify(parsedConstantTemplate)); // Return a copy of the parsed constant template
         }
-    }
-
+    };
 }
