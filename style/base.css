@@ -5,9 +5,86 @@
 */
 
 /* stylelint-disable selector-class-pattern */
+
 .apricot-TopArea {
     display: flex;
     justify-content: center;
     align-items: center;
     margin-right: 10px;
 }
+
+.loader {
+    border: 16px solid #f3f3f3; /* Light grey */
+    border-top: 16px solid #3498db; /* Blue */
+    border-radius: 50%;
+    width: 120px;
+    height: 120px;
+    animation: spin 2s linear infinite;
+    margin-left: auto;
+    margin-right: auto;  
+    margin-top: auto;  
+    margin-bottom: auto;  
+  }
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+
+/*.deployments-table {
+    border: 1px solid black;
+    border-collapse: collapse;
+    width: 100%;
+  }
+   table, td, th {
+    border: 1px solid black;
+    padding-left: 10px;
+    padding-right: 10px;
+  } 
+  .btn-custom { 
+    background-color: #EF8200;
+    color: #EF8200;
+  }
+  
+  
+  .deployments-table th,
+  .deployments-table td {
+    padding: 8px;
+    text-align: left;
+    border-bottom: 1px solid black;
+  }
+  
+  .deployments-table th {
+    font-weight: bold;
+  }
+  
+  .deployments-table tr:nth-child(even) {
+    background-color: #f2f2f2;
+  }
+  
+  .deployments-table tr:hover {
+    background-color: #ddd;
+  }
+  
+  
+  
+  ul {
+    padding-inline-start: 0%;
+    line-height: 0.5;
+  }
+  
+  .checkbox-grid li {
+      display: block;
+  }
+  
+  .checkbox-grid label {
+    margin-left: 5px;
+  }
+  
+  .formButton {
+    border-radius: 10px 10px 0 0;
+    text-align: center;
+    display: inline-block;
+    cursor: pointer;
+  }
+   */
