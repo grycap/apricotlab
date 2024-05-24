@@ -584,10 +584,9 @@ export module DeploymentLogic {
             future.onIOPub = (msg) => {
                 const content = msg.content as any; // Cast content to any type
                 const output = content.text || (content.data && content.data['text/plain']);
-                const outputType = content.msg_type;
 
                 // Pass all output to handleKernelOutput function
-                handleKernelOutput(output, outputType);
+                handleKernelOutput(output);
             };
 
         } catch (error) {
@@ -595,24 +594,20 @@ export module DeploymentLogic {
             deploying = false;
         }
 
-        async function handleKernelOutput(output: string | undefined, outputType: string | undefined) {
-            if (outputType === "stream") {
-                // Handle stdout or stderr output
-                console.log(output);
-            } else if (output && output.includes('error')) {
-                // Handle error output
-                alert('Error deploying infrastructure');
+        async function handleKernelOutput(output: string | undefined) {
+            if (output && output.toLowerCase().includes('error')) { // Check if output is defined
+                alert(output);
                 if (deployInfo.childs.length === 0) {
                     deployInfraConfiguration(dialogBody);
                 } else {
                     deployChildsConfiguration(dialogBody);
                 }
-            } else if (output) {
-                // Handle other types of output
+            } else if (output) { // Check if output is defined
+                alert(output);
                 // Extract infrastructure ID
                 const idMatch = output.match(/ID: ([\w-]+)/);
                 const infrastructureID = idMatch ? idMatch[1] : '';
-
+        
                 // Create a JSON object
                 const jsonObj = {
                     name: deployInfo.infName,
@@ -623,10 +618,14 @@ export module DeploymentLogic {
                     tenant: deployInfo.tenant,
                     user: deployInfo.username,
                     pass: deployInfo.password,
+                    // domain: deployInfo.domain,
+                    // authVersion: deployInfo.authVersion,
                 };
-
+        
                 const cmdSaveToInfrastructureList = saveToInfrastructureList(jsonObj);
                 cmdSaveToInfrastructureList;
+                dialogBody.innerHTML = ''; // Clear dialog
+                deploying = false;
             }
         }
     }
