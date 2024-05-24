@@ -582,36 +582,33 @@ export module DeploymentLogic {
             const future = kernel.requestExecute({ code: cmdDeployIMCommand });
 
             future.onIOPub = (msg) => {
-                if (msg.header.msg_type === 'stream' || msg.header.msg_type === 'execute_result') {
-                    const content = msg.content as any;
-                    const output = content.text || (content.data && content.data['text/plain']);
-                    handleKernelOutput(output);
-                }
-            };
+                const content = msg.content as any; // Cast content to any type
+                const output = content.text || (content.data && content.data['text/plain']);
+                const outputType = content.msg_type;
 
-            future.done.then(() => {
-                deploying = false;
-                kernel.shutdown();
-            }).catch((error) => {
-                console.error('Error deploying infrastructure:', error);
-                deploying = false;
-                kernel.shutdown();
-            });
+                // Pass all output to handleKernelOutput function
+                handleKernelOutput(output, outputType);
+            };
 
         } catch (error) {
             console.error('Error deploying infrastructure:', error);
             deploying = false;
         }
 
-        async function handleKernelOutput(output: string) {
-            if (output.includes('error')) {
+        async function handleKernelOutput(output: string | undefined, outputType: string | undefined) {
+            if (outputType === "stream") {
+                // Handle stdout or stderr output
+                console.log(output);
+            } else if (output && output.includes('error')) {
+                // Handle error output
                 alert('Error deploying infrastructure');
                 if (deployInfo.childs.length === 0) {
                     deployInfraConfiguration(dialogBody);
                 } else {
                     deployChildsConfiguration(dialogBody);
                 }
-            } else {
+            } else if (output) {
+                // Handle other types of output
                 // Extract infrastructure ID
                 const idMatch = output.match(/ID: ([\w-]+)/);
                 const infrastructureID = idMatch ? idMatch[1] : '';
@@ -639,8 +636,8 @@ export module DeploymentLogic {
         const pipeAuth = `${obj.infName}-auth-pipe`;
         const imageRADL = obj.infName;
         const templatePath = `~/.imclient/templates/${imageRADL}.yaml`;
-    
-        let cmd = `#!/bin/bash
+
+        let cmd = `%%bash
     PWD=$(pwd)
     # Remove pipes if they exist
     rm -f $PWD/${pipeAuth} &> /dev/null
@@ -651,17 +648,17 @@ export module DeploymentLogic {
     # Save mergedTemplate as a YAML file
     echo '${mergedTemplate}' > ${templatePath}
     `;
-    
+
         // Command to create the IM-cli credentials
         let authContent = `id = im; type = InfrastructureManager; username = user; password = pass;\n`;
         authContent += `id = ${obj.id}; type = ${obj.deploymentType}; host = ${obj.host}; username = ${obj.username}; password = ${obj.password};`;
-    
+
         if (obj.deploymentType === 'OpenStack') {
             authContent += ` tenant = ${obj.tenant};`;
         } else if (obj.deploymentType === 'AWS') {
             authContent += ` image = ${obj.worker.image};`;
         }
-    
+
         cmd += `echo -e "${authContent}" > $PWD/${pipeAuth} &
     # Create final command where the output is stored in "imOut"
     imOut=$(python3 /usr/local/bin/im_client.py -a $PWD/${pipeAuth} create ${templatePath} -r https://im.egi.eu/im)
@@ -675,22 +672,23 @@ export module DeploymentLogic {
         echo -e $imOut
     fi
     `;
-    
-        console.log("cmd", cmd);
+
+        console.log("cmd", cmd); // Log the generated command
         return cmd;
     }
 
     const saveToInfrastructureList = (obj: InfrastructureData): string => {
         // Define the file path
         const filePath = "$PWD/infrastructuresList.json";
-    
+
         // Construct the bash command
         const cmd = `
+            %%bash
             existingJson=$(cat ${filePath})
-            newJson=$(echo $existingJson | jq '.infrastructures += [${JSON.stringify(obj).replace(/"/g, '\\"')}]')
-            echo $newJson > ${filePath}
+            newJson=$(echo "$existingJson" | jq '.infrastructures += [${JSON.stringify(obj)}]')
+            echo "$newJson" > ${filePath}
         `;
-    
+
         console.log("cmd", cmd);
         return cmd;
     };
