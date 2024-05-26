@@ -125,6 +125,194 @@ export module DeploymentLogic {
         return input.value;
     };
 
+    async function handleKernelOutput(output: string | undefined, dialogBody: HTMLElement) {
+        if (output && output.toLowerCase().includes('error')) {
+            alert(output);
+            deploying = false;
+            if (deployInfo.childs.length === 0) {
+                deployInfraConfiguration(dialogBody);
+            } else {
+                deployChildsConfiguration(dialogBody);
+            }
+        } else if (output) {
+            alert(output);
+            // Extract infrastructure ID
+            const idMatch = output.match(/ID: ([\w-]+)/);
+            const infrastructureID = idMatch ? idMatch[1] : '';
+    
+            // Create a JSON object
+            const jsonObj = {
+                name: deployInfo.infName,
+                infrastructureID: infrastructureID,
+                id: deployInfo.id,
+                type: deployInfo.deploymentType,
+                host: deployInfo.host,
+                tenant: deployInfo.tenant,
+                user: deployInfo.username,
+                pass: deployInfo.password,
+                // domain: deployInfo.domain,
+                // authVersion: deployInfo.authVersion,
+            };
+    
+            const cmdSaveToInfrastructureList = await saveToInfrastructureList(jsonObj);
+            
+            // Execute kernel to get output
+            const kernelManager = new KernelManager();
+            const kernel = await kernelManager.startNew();
+            const future = kernel.requestExecute({ code: cmdSaveToInfrastructureList });
+            
+            future.onIOPub = (msg) => {
+                const content = msg.content as any; // Cast content to any type
+                const output = content.text || (content.data && content.data['text/plain']);
+    
+                // Pass all output to handleKernelOutput function
+                handleKernelOutput(output, dialogBody);
+            };
+            dialogBody.innerHTML = '';
+            deploying = false;
+        }
+    }; 
+
+    function deployIMCommand(obj: DeployInfo, mergedTemplate: string): string {
+        const pipeAuth = `${obj.infName}-auth-pipe`;
+        const imageRADL = obj.infName;
+        const templatePath = `~/.imclient/templates/${imageRADL}.yaml`;
+
+        let cmd = `%%bash
+            PWD=$(pwd)
+            # Remove pipes if they exist
+            rm -f $PWD/${pipeAuth} &> /dev/null
+            # Create directory for templates
+            mkdir -p $PWD/templates &> /dev/null
+            # Create pipes
+            mkfifo $PWD/${pipeAuth}
+            # Save mergedTemplate as a YAML file
+            echo '${mergedTemplate}' > ${templatePath}
+        `;
+
+        // Command to create the IM-cli credentials
+        let authContent = `id = im; type = InfrastructureManager; username = user; password = pass;\n`;
+        authContent += `id = ${obj.id}; type = ${obj.deploymentType}; host = ${obj.host}; username = ${obj.username}; password = ${obj.password};`;
+
+        if (obj.deploymentType === 'OpenStack') {
+            authContent += ` tenant = ${obj.tenant};`;
+        } else if (obj.deploymentType === 'AWS') {
+            authContent += ` image = ${obj.worker.image};`;
+        }
+
+        cmd += `echo -e "${authContent}" > $PWD/${pipeAuth} &
+            # Create final command where the output is stored in "imOut"
+            imOut=$(python3 /usr/local/bin/im_client.py -a $PWD/${pipeAuth} create ${templatePath} -r https://im.egi.eu/im)
+            # Remove pipe
+            rm -f $PWD/${pipeAuth} &> /dev/null
+            # Print IM output on stderr or stdout
+            if [ $? -ne 0 ]; then
+                >&2 echo -e $imOut
+                exit 1
+            else
+                echo -e $imOut
+            fi
+            `;
+
+        console.log("cmd", cmd);
+        return cmd;
+    };
+
+    async function saveToInfrastructureList(obj: InfrastructureData) {
+        const filePath = "$PWD/infrastructuresList.json";
+
+        // Construct the bash command
+        const cmd = `
+            %%bash
+            PWD=$(pwd)
+            existingJson=$(cat ${filePath})
+            newJson=$(echo "$existingJson" | jq '.infrastructures += [${JSON.stringify(obj)}]')
+            echo "$newJson" > ${filePath}
+        `;
+
+        console.log("cmd", cmd);
+        return cmd;
+    };
+
+    async function computeHash(input: string): Promise<string> {
+        const msgUint8 = new TextEncoder().encode(input);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        return hashHex;
+    };
+
+    async function mergeTOSCARecipes(
+        parsedConstantTemplate: any,
+        userInputs: UserInput[] | undefined,
+        nodeTemplates: any[] | undefined,
+        outputs: any[] | undefined
+    ): Promise<any> {
+        try {
+            // Clone the parsed constant template to avoid mutating the original
+            const mergedTemplate = JSON.parse(JSON.stringify(parsedConstantTemplate));
+
+            // Process user inputs if defined and not empty
+            if (userInputs && userInputs.length > 0) {
+                const populatedTemplates = await Promise.all(userInputs);
+
+                // Ensure populatedTemplates is not undefined
+                if (populatedTemplates) {
+                    populatedTemplates.forEach(template => {
+                        if (template && template.inputs) {
+                            Object.entries(template.inputs).forEach(([inputName, input]) => {
+                                if (typeof input === 'object' && input !== null) {
+                                    const inputValue = (input as TemplateInput).value;
+
+                                    console.log('Merging input:', inputName, 'with value:', inputValue);
+
+                                    // Merge or add inputs in the constant template
+                                    if (mergedTemplate.topology_template.inputs?.hasOwnProperty(inputName)) {
+                                        mergedTemplate.topology_template.inputs[inputName].default = inputValue;
+                                    } else {
+                                        mergedTemplate.topology_template.inputs = {
+                                            ...mergedTemplate.topology_template.inputs,
+                                            [inputName]: {
+                                                type: 'string',
+                                                description: inputName,
+                                                default: inputValue
+                                            }
+                                        };
+                                    }
+                                }
+                            });
+                        }
+
+                        // Merge node templates
+                        if (template.nodeTemplates) {
+                            Object.entries(template.nodeTemplates).forEach(([nodeTemplateName, nodeTemplate]) => {
+                                mergedTemplate.topology_template.node_templates = {
+                                    ...mergedTemplate.topology_template.node_templates,
+                                    [nodeTemplateName]: nodeTemplate
+                                };
+                            });
+                        }
+
+                        // Merge outputs
+                        if (template.outputs) {
+                            Object.entries(template.outputs).forEach(([outputName, output]) => {
+                                mergedTemplate.topology_template.outputs = {
+                                    ...mergedTemplate.topology_template.outputs,
+                                    [outputName]: output
+                                };
+                            });
+                        }
+                    });
+                }
+            }
+
+            return mergedTemplate;
+        } catch (error) {
+            console.error("Error merging TOSCA recipes:", error);
+            return JSON.parse(JSON.stringify(parsedConstantTemplate)); // Return a copy of the parsed constant template
+        }
+    };
+
     //****************//
     //*  Deployment  *//
     //****************// 
@@ -531,26 +719,26 @@ export module DeploymentLogic {
     ): Promise<void> {
         // Clear dialog
         dialogBody.innerHTML = '';
-
+    
         // Deploy only one infrastructure at once
         if (deploying) {
             alert('Previous deploy has not finished.');
             return;
         }
         deploying = true;
-
+    
         try {
             // Load constant template
             const contentsManager = new ContentsManager();
             const file = await contentsManager.get('templates/simple-node-disk.yaml');
             const yamlContentFromFile = file.content;
             const parsedConstantTemplate = jsyaml.load(yamlContentFromFile) as any;
-
+    
             // Add infra_name field and a hash to metadata field
             const hash = await computeHash(JSON.stringify(deployInfo));
             parsedConstantTemplate.metadata = parsedConstantTemplate.metadata || {};
             parsedConstantTemplate.metadata.infra_name = `jupyter_${hash}`;
-
+    
             // Populate constant template with worker values
             const workerInputs = parsedConstantTemplate.topology_template.inputs;
             Object.keys(deployInfo.worker).forEach(key => {
@@ -565,209 +753,34 @@ export module DeploymentLogic {
                     };
                 }
             });
-
+    
             // Merge constant template with populated templates
             const mergedTemplate = await mergeTOSCARecipes(parsedConstantTemplate, populatedTemplates, nodeTemplates, outputs);
             const yamlContent = jsyaml.dump(mergedTemplate);
-
+    
             // Create deploy script
             const cmdDeployIMCommand = deployIMCommand(deployInfo, yamlContent);
-
+    
             // Show loading spinner
             dialogBody.innerHTML = '<div class="loader"></div>';
-
+    
             // Execute kernel to get output
             const kernelManager = new KernelManager();
             const kernel = await kernelManager.startNew();
             const future = kernel.requestExecute({ code: cmdDeployIMCommand });
-
+    
             future.onIOPub = (msg) => {
                 const content = msg.content as any; // Cast content to any type
                 const output = content.text || (content.data && content.data['text/plain']);
-
+    
                 // Pass all output to handleKernelOutput function
-                handleKernelOutput(output);
+                handleKernelOutput(output, dialogBody);
             };
-
+    
         } catch (error) {
             console.error('Error deploying infrastructure:', error);
             deploying = false;
         }
-
-        async function handleKernelOutput(output: string | undefined) {
-            if (output && output.toLowerCase().includes('error')) { // Check if output is defined
-                alert(output);
-                if (deployInfo.childs.length === 0) {
-                    deployInfraConfiguration(dialogBody);
-                } else {
-                    deployChildsConfiguration(dialogBody);
-                }
-            } else if (output) { // Check if output is defined
-                alert(output);
-                // Extract infrastructure ID
-                const idMatch = output.match(/ID: ([\w-]+)/);
-                const infrastructureID = idMatch ? idMatch[1] : '';
-        
-                // Create a JSON object
-                const jsonObj = {
-                    name: deployInfo.infName,
-                    infrastructureID: infrastructureID,
-                    id: deployInfo.id,
-                    type: deployInfo.deploymentType,
-                    host: deployInfo.host,
-                    tenant: deployInfo.tenant,
-                    user: deployInfo.username,
-                    pass: deployInfo.password,
-                    // domain: deployInfo.domain,
-                    // authVersion: deployInfo.authVersion,
-                };
-        
-                const cmdSaveToInfrastructureList = saveToInfrastructureList(jsonObj);
-                cmdSaveToInfrastructureList;
-                dialogBody.innerHTML = ''; // Clear dialog
-                deploying = false;
-            }
-        }
-    }
-
-
-    function deployIMCommand(obj: DeployInfo, mergedTemplate: string): string {
-        const pipeAuth = `${obj.infName}-auth-pipe`;
-        const imageRADL = obj.infName;
-        const templatePath = `~/.imclient/templates/${imageRADL}.yaml`;
-
-        let cmd = `%%bash
-    PWD=$(pwd)
-    # Remove pipes if they exist
-    rm -f $PWD/${pipeAuth} &> /dev/null
-    # Create directory for templates
-    mkdir -p $PWD/templates &> /dev/null
-    # Create pipes
-    mkfifo $PWD/${pipeAuth}
-    # Save mergedTemplate as a YAML file
-    echo '${mergedTemplate}' > ${templatePath}
-    `;
-
-        // Command to create the IM-cli credentials
-        let authContent = `id = im; type = InfrastructureManager; username = user; password = pass;\n`;
-        authContent += `id = ${obj.id}; type = ${obj.deploymentType}; host = ${obj.host}; username = ${obj.username}; password = ${obj.password};`;
-
-        if (obj.deploymentType === 'OpenStack') {
-            authContent += ` tenant = ${obj.tenant};`;
-        } else if (obj.deploymentType === 'AWS') {
-            authContent += ` image = ${obj.worker.image};`;
-        }
-
-        cmd += `echo -e "${authContent}" > $PWD/${pipeAuth} &
-    # Create final command where the output is stored in "imOut"
-    imOut=$(python3 /usr/local/bin/im_client.py -a $PWD/${pipeAuth} create ${templatePath} -r https://im.egi.eu/im)
-    # Remove pipe
-    rm -f $PWD/${pipeAuth} &> /dev/null
-    # Print IM output on stderr or stdout
-    if [ $? -ne 0 ]; then
-        >&2 echo -e $imOut
-        exit 1
-    else
-        echo -e $imOut
-    fi
-    `;
-
-        console.log("cmd", cmd); // Log the generated command
-        return cmd;
-    }
-
-    const saveToInfrastructureList = (obj: InfrastructureData): string => {
-        // Define the file path
-        const filePath = "$PWD/infrastructuresList.json";
-
-        // Construct the bash command
-        const cmd = `
-            %%bash
-            existingJson=$(cat ${filePath})
-            newJson=$(echo "$existingJson" | jq '.infrastructures += [${JSON.stringify(obj)}]')
-            echo "$newJson" > ${filePath}
-        `;
-
-        console.log("cmd", cmd);
-        return cmd;
     };
 
-    async function computeHash(input: string): Promise<string> {
-        const msgUint8 = new TextEncoder().encode(input);
-        const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-        return hashHex;
-    };
-
-    async function mergeTOSCARecipes(
-        parsedConstantTemplate: any,
-        userInputs: UserInput[] | undefined,
-        nodeTemplates: any[] | undefined,
-        outputs: any[] | undefined
-    ): Promise<any> {
-        try {
-            // Clone the parsed constant template to avoid mutating the original
-            const mergedTemplate = JSON.parse(JSON.stringify(parsedConstantTemplate));
-
-            // Process user inputs if defined and not empty
-            if (userInputs && userInputs.length > 0) {
-                const populatedTemplates = await Promise.all(userInputs);
-
-                // Ensure populatedTemplates is not undefined
-                if (populatedTemplates) {
-                    populatedTemplates.forEach(template => {
-                        if (template && template.inputs) {
-                            Object.entries(template.inputs).forEach(([inputName, input]) => {
-                                if (typeof input === 'object' && input !== null) {
-                                    const inputValue = (input as TemplateInput).value;
-
-                                    console.log('Merging input:', inputName, 'with value:', inputValue);
-
-                                    // Merge or add inputs in the constant template
-                                    if (mergedTemplate.topology_template.inputs?.hasOwnProperty(inputName)) {
-                                        mergedTemplate.topology_template.inputs[inputName].default = inputValue;
-                                    } else {
-                                        mergedTemplate.topology_template.inputs = {
-                                            ...mergedTemplate.topology_template.inputs,
-                                            [inputName]: {
-                                                type: 'string',
-                                                description: inputName,
-                                                default: inputValue
-                                            }
-                                        };
-                                    }
-                                }
-                            });
-                        }
-
-                        // Merge node templates
-                        if (template.nodeTemplates) {
-                            Object.entries(template.nodeTemplates).forEach(([nodeTemplateName, nodeTemplate]) => {
-                                mergedTemplate.topology_template.node_templates = {
-                                    ...mergedTemplate.topology_template.node_templates,
-                                    [nodeTemplateName]: nodeTemplate
-                                };
-                            });
-                        }
-
-                        // Merge outputs
-                        if (template.outputs) {
-                            Object.entries(template.outputs).forEach(([outputName, output]) => {
-                                mergedTemplate.topology_template.outputs = {
-                                    ...mergedTemplate.topology_template.outputs,
-                                    [outputName]: output
-                                };
-                            });
-                        }
-                    });
-                }
-            }
-
-            return mergedTemplate;
-        } catch (error) {
-            console.error("Error merging TOSCA recipes:", error);
-            return JSON.parse(JSON.stringify(parsedConstantTemplate)); // Return a copy of the parsed constant template
-        }
-    };
 }
