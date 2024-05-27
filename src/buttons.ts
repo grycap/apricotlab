@@ -3,12 +3,11 @@ import { NotebookPanel, INotebookModel } from '@jupyterlab/notebook';
 import { DocumentRegistry } from '@jupyterlab/docregistry';
 import { IDisposable } from '@lumino/disposable';
 import { Widget } from '@lumino/widgets';
-import { DeploymentLogic } from './deploymentLogic';
+import { DeploymentLogic } from './deploymentMenu';
+import { ListDeploymentsLogic } from './listDeployments';
 
 export class ButtonExtension implements DocumentRegistry.IWidgetExtension<NotebookPanel, INotebookModel> {
 
-    // Everytime a Notebook is created the createNew function will run
-    // NotebookPanel is the widget class for Notebook
     createNew(panel: NotebookPanel, context: DocumentRegistry.IContext<INotebookModel>): IDisposable {
         // Create the toolbar buttons
         const DeploymentButton = new ToolbarButton({
@@ -18,7 +17,7 @@ export class ButtonExtension implements DocumentRegistry.IWidgetExtension<Notebo
 
         const ListDeploymentsButton = new ToolbarButton({
             label: 'Deployments list',
-            onClick: () => this.openListDeploymentsDialog()
+            onClick: () => ListDeploymentsLogic.openListDeploymentsDialog()
         });
 
         // Insert buttons into the toolbar
@@ -42,7 +41,7 @@ export class ButtonExtension implements DocumentRegistry.IWidgetExtension<Notebo
         DeploymentLogic.deployChooseProvider(dialogContent);
 
         // Create a widget from the dialog content
-        const contentWidget = new Widget({ node: dialogContent })
+        const contentWidget = new Widget({ node: dialogContent });
 
         const dialog = new Dialog({
             title: 'Deploy Infrastructure',
@@ -55,15 +54,5 @@ export class ButtonExtension implements DocumentRegistry.IWidgetExtension<Notebo
             // Logic to handle form submission
             console.log('Form submitted');
         });
-
-    }
-
-
-    private openListDeploymentsDialog(): void {
-        const dialog = new Dialog({
-            title: 'Deployments List',
-            body: '', // Create and append table elements here
-        });
-        dialog.launch();
     }
 }
