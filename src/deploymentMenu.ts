@@ -1,6 +1,8 @@
 import * as jsyaml from 'js-yaml';
 import { ContentsManager } from '@jupyterlab/services';
 import { KernelManager } from '@jupyterlab/services';
+import { Widget } from '@lumino/widgets';
+import { Dialog } from '@jupyterlab/apputils';
 
 export module DeploymentLogic {
 
@@ -126,52 +128,53 @@ export module DeploymentLogic {
     };
 
     async function handleKernelOutput(output: string | undefined, dialogBody: HTMLElement) {
-        if (output && output.toLowerCase().includes('error')) {
+        if (!output) return;
+    
+        if (output.toLowerCase().includes('error')) {
             alert(output);
             deploying = false;
-            if (deployInfo.childs.length === 0) {
-                deployInfraConfiguration(dialogBody);
-            } else {
-                deployChildsConfiguration(dialogBody);
-            }
-        } else if (output) {
+            deployInfo.childs.length === 0 ? deployInfraConfiguration(dialogBody) : deployChildsConfiguration(dialogBody);
+        } else {
             alert(output);
+    
             // Extract infrastructure ID
             const idMatch = output.match(/ID: ([\w-]+)/);
             const infrastructureID = idMatch ? idMatch[1] : '';
     
-            // Create a JSON object
-            const jsonObj = {
+            // Create a JSON object for infrastructure data
+            const infrastructureData: InfrastructureData = {
                 name: deployInfo.infName,
-                infrastructureID: infrastructureID,
+                infrastructureID,
                 id: deployInfo.id,
                 type: deployInfo.deploymentType,
                 host: deployInfo.host,
                 tenant: deployInfo.tenant,
                 user: deployInfo.username,
                 pass: deployInfo.password,
-                // domain: deployInfo.domain,
-                // authVersion: deployInfo.authVersion,
             };
     
-            const cmdSaveToInfrastructureList = await saveToInfrastructureList(jsonObj);
-            
-            // Execute kernel to get output
-            const kernelManager = new KernelManager();
-            const kernel = await kernelManager.startNew();
-            const future = kernel.requestExecute({ code: cmdSaveToInfrastructureList });
-            
-            future.onIOPub = (msg) => {
-                const content = msg.content as any; // Cast content to any type
-                const output = content.text || (content.data && content.data['text/plain']);
+            const cmdSave = await saveToInfrastructureList(infrastructureData);
     
-                // Pass all output to handleKernelOutput function
-                handleKernelOutput(output, dialogBody);
-            };
+            // Execute kernel command to save data
+            try {
+                const kernelManager = new KernelManager();
+                const kernel = await kernelManager.startNew();
+                const future = kernel.requestExecute({ code: cmdSave });
+    
+                future.onIOPub = (msg) => {
+                    const content = msg.content as any;
+                    const outputText = content.text || (content.data && content.data['text/plain']);
+                    console.log("Kernel message:", outputText);
+                    handleKernelOutput(outputText, dialogBody);
+                };
+            } catch (error) {
+                console.error('Error executing kernel command:', error);
+                deploying = false;
+            }
             dialogBody.innerHTML = '';
             deploying = false;
         }
-    }; 
+    }
 
     function deployIMCommand(obj: DeployInfo, mergedTemplate: string): string {
         const pipeAuth = `${obj.infName}-auth-pipe`;
@@ -219,20 +222,20 @@ export module DeploymentLogic {
     };
 
     async function saveToInfrastructureList(obj: InfrastructureData) {
-        const filePath = "$PWD/infrastructuresList.json";
-
+        const filePath = `${process.env.PWD}/infrastructuresList.json`;
+    
         // Construct the bash command
         const cmd = `
             %%bash
             PWD=$(pwd)
             existingJson=$(cat ${filePath})
-            newJson=$(echo "$existingJson" | jq '.infrastructures += [${JSON.stringify(obj)}]')
+            newJson=$(echo "$existingJson" | jq -c '.infrastructures += [${JSON.stringify(obj)}]')
             echo "$newJson" > ${filePath}
         `;
-
-        console.log("cmd", cmd);
+    
+        console.log("Bash command:", cmd);
         return cmd;
-    };
+    }
 
     async function computeHash(input: string): Promise<string> {
         const msgUint8 = new TextEncoder().encode(input);
@@ -311,6 +314,29 @@ export module DeploymentLogic {
             console.error("Error merging TOSCA recipes:", error);
             return JSON.parse(JSON.stringify(parsedConstantTemplate)); // Return a copy of the parsed constant template
         }
+    };
+
+    export async function openDeploymentDialog(): Promise<void>  {
+        // Create a container element for the dialog content
+        const dialogContent = document.createElement('div');
+
+        // Call deployChooseProvider to append buttons to dialogContent
+        DeploymentLogic.deployChooseProvider(dialogContent);
+
+        // Create a widget from the dialog content
+        const contentWidget = new Widget({ node: dialogContent });
+
+        const dialog = new Dialog({
+            title: 'Deploy Infrastructure',
+            body: contentWidget,
+            buttons: [Dialog.cancelButton(), Dialog.okButton()]
+        });
+
+        // Handle form submission
+        dialog.launch().then(result => {
+            // Logic to handle form submission
+            console.log('Form submitted');
+        });
     };
 
     //****************//
@@ -717,10 +743,10 @@ export module DeploymentLogic {
         nodeTemplates: any[] = [],
         outputs: any[] = []
     ): Promise<void> {
-        // Clear dialog
+        // Clear the dialog body
         dialogBody.innerHTML = '';
     
-        // Deploy only one infrastructure at once
+        // Ensure only one deployment occurs at a time
         if (deploying) {
             alert('Previous deploy has not finished.');
             return;
@@ -728,59 +754,47 @@ export module DeploymentLogic {
         deploying = true;
     
         try {
-            // Load constant template
             const contentsManager = new ContentsManager();
             const file = await contentsManager.get('templates/simple-node-disk.yaml');
-            const yamlContentFromFile = file.content;
-            const parsedConstantTemplate = jsyaml.load(yamlContentFromFile) as any;
+            const yamlContent = file.content;
+            const parsedTemplate = jsyaml.load(yamlContent) as any;
     
-            // Add infra_name field and a hash to metadata field
+            // Add infrastructure name and a hash to the metadata
             const hash = await computeHash(JSON.stringify(deployInfo));
-            parsedConstantTemplate.metadata = parsedConstantTemplate.metadata || {};
-            parsedConstantTemplate.metadata.infra_name = `jupyter_${hash}`;
+            parsedTemplate.metadata = parsedTemplate.metadata || {};
+            parsedTemplate.metadata.infra_name = `jupyter_${hash}`;
     
-            // Populate constant template with worker values
-            const workerInputs = parsedConstantTemplate.topology_template.inputs;
+            // Populate the template with worker values
+            const workerInputs = parsedTemplate.topology_template.inputs;
             Object.keys(deployInfo.worker).forEach(key => {
-                if (workerInputs.hasOwnProperty(key)) {
-                    // Update the default value of the existing input
-                    workerInputs[key].default = deployInfo.worker[key];
-                } else {
-                    // If the input doesn't exist, add it dynamically
-                    workerInputs[key] = {
-                        type: typeof deployInfo.worker[key],
-                        default: deployInfo.worker[key]
-                    };
-                }
+                workerInputs[key] = workerInputs[key] || { type: typeof deployInfo.worker[key] };
+                workerInputs[key].default = deployInfo.worker[key];
             });
     
-            // Merge constant template with populated templates
-            const mergedTemplate = await mergeTOSCARecipes(parsedConstantTemplate, populatedTemplates, nodeTemplates, outputs);
-            const yamlContent = jsyaml.dump(mergedTemplate);
+            // Merge templates
+            const mergedTemplate = await mergeTOSCARecipes(parsedTemplate, populatedTemplates, nodeTemplates, outputs);
+            const mergedYamlContent = jsyaml.dump(mergedTemplate);
     
-            // Create deploy script
-            const cmdDeployIMCommand = deployIMCommand(deployInfo, yamlContent);
+            // Create deploy command
+            const cmdDeploy = deployIMCommand(deployInfo, mergedYamlContent);
     
             // Show loading spinner
             dialogBody.innerHTML = '<div class="loader"></div>';
     
-            // Execute kernel to get output
+            // Execute the deployment command
             const kernelManager = new KernelManager();
             const kernel = await kernelManager.startNew();
-            const future = kernel.requestExecute({ code: cmdDeployIMCommand });
+            const future = kernel.requestExecute({ code: cmdDeploy });
     
             future.onIOPub = (msg) => {
-                const content = msg.content as any; // Cast content to any type
-                const output = content.text || (content.data && content.data['text/plain']);
-    
-                // Pass all output to handleKernelOutput function
-                handleKernelOutput(output, dialogBody);
+                const content = msg.content as any;
+                const outputText = content.text || (content.data && content.data['text/plain']);
+                handleKernelOutput(outputText, dialogBody);
             };
-    
         } catch (error) {
-            console.error('Error deploying infrastructure:', error);
+            console.error('Error during deployment:', error);
             deploying = false;
         }
-    };
+    }
 
 }
