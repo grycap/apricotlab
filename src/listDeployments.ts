@@ -51,11 +51,9 @@ export module ListDeploymentsLogic {
                 "cat $PWD/infrastructuresList.json";
 
             const futureReadJson = kernel.requestExecute({ code: cmdReadJson });
-            console.log("futureReadJson", futureReadJson);
+
             futureReadJson.onIOPub = (msg) => {
                 const content = msg.content as any;
-                console.log("content", content);
-                console.log("content.text", content.text);
                 if (content && content.text) {
                     // Accumulate JSON text from multiple messages if infrastructuresList.json has more than one line
                     jsonData = (jsonData || '') + content.text;
@@ -69,7 +67,7 @@ export module ListDeploymentsLogic {
             }
         } catch (error) {
             console.error("Error reading or parsing infrastructuresList.json:", error);
-            throw new Error("Error creating table"); // Throw an error instead of returning null
+            throw new Error("Error creating table");
         }
 
         // Parse the JSON data
@@ -80,7 +78,7 @@ export module ListDeploymentsLogic {
             }
         } catch (error) {
             console.error("Error parsing JSON data from infrastructuresList.json:", error);
-            throw new Error("Error parsing JSON data"); // Throw an error instead of returning null
+            throw new Error("Error parsing JSON data");
         }
 
         // Create the table element
@@ -107,65 +105,70 @@ export module ListDeploymentsLogic {
             const stateCell = row.insertCell();
 
             try {
-                // Execute kernel to get IP
+                const cmdState = infrastructureState(infrastructure);
+                // Execute kernel to get output
+                const futureState = kernel.requestExecute({ code: cmdState });
+            
+                // Initialize stateCell text content as 'Loading...'
+                stateCell.textContent = 'Loading...';
+            
+                futureState.onIOPub = (msg) => {
+                    const content = msg.content as any; // Cast content to any type
+                    const outputState = content.text || (content.data && content.data['text/plain']);
+                    // Ensure outputState is not undefined before updating stateCell text content
+                    if (outputState !== undefined) {
+                        // Extract the state from the output (if present)
+                        const stateWords = outputState.trim().split(" ");
+                        const stateIndex = stateWords.indexOf("state:");
+                        if (stateIndex !== -1 && stateIndex < stateWords.length - 1) {
+                            const state = stateWords[stateIndex + 1].trim();
+                            stateCell.textContent = state;
+                        } else {
+                            stateCell.textContent = 'Error';
+                        }
+                    }
+                };
+            
+                await futureState.done; // Wait for state request to complete
+            } catch (error) {
+                console.error(`Error fetching state for infrastructure ${infrastructure.infrastructureID}:`, error);
+                stateCell.textContent = 'Error';
+            }
+            
+
+            try {
                 const cmdIP = infrastructureIP(infrastructure.infrastructureID);
+                // Execute kernel to get output
                 const futureIP = kernel.requestExecute({ code: cmdIP });
-                const ipResponse = await futureIP.done;
-                console.log("ipResponse", ipResponse);
-                const ipContent = ipResponse.content as any;
-                console.log("ipContent", ipContent);
-                console.log("ipContent.text", ipContent.text);
-                const ipOutput = ipContent.text || (ipContent.data && ipContent.data['text/plain']);
-                ipCell.textContent = ipOutput ? ipOutput.trim() : 'Error';
+            
+                // Initialize ipCell text content as 'Loading...'
+                ipCell.textContent = 'Loading...';
+            
+                futureIP.onIOPub = (msg) => {
+                    const content = msg.content as any; // Cast content to any type
+                    const outputIP = content.text || (content.data && content.data['text/plain']);
+                    // Ensure outputIP is not undefined before updating ipCell text content
+                    if (outputIP !== undefined) {
+                        // Extract the IP from the output (get the last word)
+                        const ipWords = outputIP.trim().split(" ");
+                        const ip = ipWords[ipWords.length - 1];
+                        ipCell.textContent = ip ? ip : 'Error';
+                    }
+                };
+            
+                await futureIP.done; // Wait for IP request to complete
             } catch (error) {
                 console.error(`Error fetching IP for infrastructure ${infrastructure.infrastructureID}:`, error);
                 ipCell.textContent = 'Error';
             }
 
-            try {
-                // Execute kernel to get State
-                const cmdState = infrastructureState(infrastructure);
-                const futureState = kernel.requestExecute({ code: cmdState });
-                const stateResponse = await futureState.done;
-                const stateContent = stateResponse.content as any;
-                const stateOutput = stateContent.text || (stateContent.data && stateContent.data['text/plain']);
-                stateCell.textContent = stateOutput ? stateOutput.trim() : 'Error';
-            } catch (error) {
-                console.error(`Error fetching state for infrastructure ${infrastructure.infrastructureID}:`, error);
-                stateCell.textContent = 'Error';
-            }
+
         }));
 
         // Shutdown the kernel after all asynchronous tasks are completed
         await kernel.shutdown();
 
         return table;
-    };
-
-
-    function infrastructureIP(infrastructureID: string): string {
-        const pipeAuth = "auth-pipe";
-        let cmd = `%%bash
-            PWD=$(pwd)
-            # Remove pipes if they exist
-            rm -f $PWD/${pipeAuth} &> /dev/null
-            # Create pipes
-            mkfifo $PWD/${pipeAuth}
-            # Command to create the infrastructure manager client credentials
-            echo -e "id = im; type = InfrastructureManager; username = user; password = pass;" > $PWD/${pipeAuth} &
-            # Execute command to get IP
-            ipOut=$(python3 /usr/local/bin/im_client.py getvminfo ${infrastructureID} 0 net_interface.1.ip -r https://im.egi.eu/im -a $PWD/${pipeAuth})
-            # Remove pipe
-            rm -f $PWD/${pipeAuth} &> /dev/null
-            # Print IP output on stderr or stdout
-            if [ $? -ne 0 ]; then
-                >&2 echo -e $ipOut
-                exit 1
-            else
-                echo -e $ipOut
-            fi
-        `;
-        return cmd;
     };
 
     function infrastructureState(infrastructure: Infrastructure): string {
@@ -214,6 +217,32 @@ export module ListDeploymentsLogic {
                 echo -e $stateOut
             fi
         `;
+        console.log('cmdState', cmd);
+        return cmd;
+    };
+
+    function infrastructureIP(infrastructureID: string): string {
+        const pipeAuth = "auth-pipe";
+        let cmd = `%%bash
+            PWD=$(pwd)
+            # Remove pipes if they exist
+            rm -f $PWD/${pipeAuth} &> /dev/null
+            # Create pipes
+            mkfifo $PWD/${pipeAuth}
+            # Command to create the infrastructure manager client credentials
+            echo -e "id = im; type = InfrastructureManager; username = user; password = pass;" > $PWD/${pipeAuth} &
+            # Execute command to get IP
+            ipOut=$(python3 /usr/local/bin/im_client.py getvminfo ${infrastructureID} 0 net_interface.1.ip -r https://im.egi.eu/im -a $PWD/${pipeAuth})
+            # Remove pipe
+            # Print IP output on stderr or stdout
+            if [ $? -ne 0 ]; then
+                >&2 echo -e $ipOut
+                exit 1
+            else
+                echo -e $ipOut
+            fi
+        `;
+        console.log('cmdIP', cmd);
         return cmd;
     };
 
