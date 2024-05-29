@@ -19,7 +19,8 @@ export module ListDeploymentsLogic {
 
     export async function openListDeploymentsDialog(): Promise<void> {
         try {
-            const table = await createTable();
+            const table = createTable();
+            await populateTable(table);
 
             // Create a dialog and append the table to it
             const dialogContent = document.createElement('div');
@@ -38,7 +39,23 @@ export module ListDeploymentsLogic {
         }
     };
 
-    export async function createTable(): Promise<HTMLTableElement> {
+    function createTable(): HTMLTableElement {
+        const table = document.createElement('table');
+        table.classList.add('deployments-table');
+
+        // Create the header row
+        const headerRow = table.insertRow();
+        const headers = ['Name', 'ID', 'IP', 'State'];
+        headers.forEach(header => {
+            const th = document.createElement('th');
+            th.textContent = header;
+            headerRow.appendChild(th);
+        });
+
+        return table;
+    };
+
+    async function populateTable(table: HTMLTableElement): Promise<void> {
         let jsonData: string | null = null;
 
         // Kernel manager to execute the bash command
@@ -80,19 +97,6 @@ export module ListDeploymentsLogic {
             console.error("Error parsing JSON data from infrastructuresList.json:", error);
             throw new Error("Error parsing JSON data");
         }
-
-        // Create the table element
-        const table = document.createElement('table');
-        table.classList.add('deployments-table');
-
-        // Create the header row
-        const headerRow = table.insertRow();
-        const headers = ['Name', 'ID', 'IP', 'State'];
-        headers.forEach(header => {
-            const th = document.createElement('th');
-            th.textContent = header;
-            headerRow.appendChild(th);
-        });
 
         // Populate the table rows and fetch IP and state for each infrastructure
         await Promise.all(infrastructures.map(async (infrastructure) => {
@@ -167,46 +171,64 @@ export module ListDeploymentsLogic {
 
         // Shutdown the kernel after all asynchronous tasks are completed
         await kernel.shutdown();
-
-        return table;
     };
 
     function infrastructureState(infrastructure: Infrastructure): string {
-        const infrastructureID = infrastructure.infrastructureID;
-        const id = infrastructure.id;
-        const deploymentType = infrastructure.type;
-        const host = infrastructure.host;
-        const user = infrastructure.user;
-        const pass = infrastructure.pass;
-        const tenant = infrastructure.tenant || '';
-        const domain = infrastructure.domain || '';
-        const authVersion = infrastructure.auth_version || '';
+        const { infrastructureID, id, type, host, user, pass, tenant = '', domain = '', auth_version = '' } = infrastructure;
         const pipeAuth = "auth-pipe";
-
-        let cmd = `%%bash
+    
+        const commonAuthDetails = `
+            id = im;
+            type = InfrastructureManager;
+            username = ${user};
+            password = ${pass};`;
+    
+        const typeSpecificDetails = (() => {
+            switch (type) {
+                case "OpenStack":
+                    return `
+                        id = ${id};
+                        type = ${type};
+                        host = ${host};
+                        username = ${user};
+                        password = ${pass};
+                        tenant = ${tenant};
+                        domain = ${domain};
+                        ${auth_version ? `auth_version = ${auth_version};` : ''}
+                    `;
+                case "OpenNebula":
+                    return `
+                        id = ${id};
+                        type = ${type};
+                        host = ${host};
+                        username = ${user};
+                        password = ${pass};
+                    `;
+                case "AWS":
+                    return `
+                        id = ${id};
+                        type = ${type};
+                        host = ${host};
+                        username = ${user};
+                        password = ${pass};
+                        domain = ${domain};
+                    `;
+                default:
+                    return '';
+            }
+        })();
+    
+        const cmd = `%%bash
             PWD=$(pwd)
             # Remove pipes if they exist
             rm -f $PWD/${pipeAuth} &> /dev/null
             # Create pipes
             mkfifo $PWD/${pipeAuth}
             # Command to create the infrastructure manager client credentials
-            echo -e "id = im; type = InfrastructureManager; username = user; password = pass;\n`;
-
-        if (deploymentType === "OpenStack" || deploymentType === "OpenNebula" || deploymentType === "AWS") {
-            cmd += `id = ${id}; type = ${deploymentType}; host = ${host}; username = ${user}; password = ${pass};`;
-            if (deploymentType === "OpenStack") {
-                cmd += ` tenant = ${tenant};`;
-            }
-            if (deploymentType === "OpenStack" || deploymentType === "AWS") {
-                cmd += ` domain = ${domain};`;
-            }
-            if (deploymentType === "OpenStack" && authVersion !== '') {
-                cmd += ` auth_version = ${authVersion};`;
-            }
-            cmd += `\" > $PWD/${pipeAuth} & `
-        }
-
-        cmd += `stateOut=$(python3 /usr/local/bin/im_client.py getstate ${infrastructureID} -r https://im.egi.eu/im -a $PWD/${pipeAuth})
+            echo -e "${commonAuthDetails}
+            ${typeSpecificDetails}" > $PWD/${pipeAuth} &
+    
+            stateOut=$(python3 /usr/local/bin/im_client.py getstate ${infrastructureID} -r https://im.egi.eu/im -a $PWD/${pipeAuth})
             # Remove pipe
             rm -f $PWD/${pipeAuth} &> /dev/null
             # Print state output on stderr or stdout
@@ -223,7 +245,8 @@ export module ListDeploymentsLogic {
 
     function infrastructureIP(infrastructureID: string): string {
         const pipeAuth = "auth-pipe";
-        let cmd = `%%bash
+
+        const cmd = `%%bash
             PWD=$(pwd)
             # Remove pipes if they exist
             rm -f $PWD/${pipeAuth} &> /dev/null
@@ -231,9 +254,10 @@ export module ListDeploymentsLogic {
             mkfifo $PWD/${pipeAuth}
             # Command to create the infrastructure manager client credentials
             echo -e "id = im; type = InfrastructureManager; username = user; password = pass;" > $PWD/${pipeAuth} &
-            # Execute command to get IP
+
             ipOut=$(python3 /usr/local/bin/im_client.py getvminfo ${infrastructureID} 0 net_interface.1.ip -r https://im.egi.eu/im -a $PWD/${pipeAuth})
             # Remove pipe
+            rm -f $PWD/${pipeAuth} &> /dev/null
             # Print IP output on stderr or stdout
             if [ $? -ne 0 ]; then
                 >&2 echo -e $ipOut
