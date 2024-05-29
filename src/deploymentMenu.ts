@@ -26,14 +26,14 @@ export module DeploymentLogic {
             [key: string]: number | string;
         };
         childs: string[];
-    }
+    };
 
     interface TemplateInput {
         type: string;
         description: string;
         default: any;
         value?: any;
-    }
+    };
 
     type UserInput = {
         name: string;
@@ -57,7 +57,7 @@ export module DeploymentLogic {
         tenant: string;
         user: string;
         pass: string;
-    }
+    };
 
     let deployInfo: DeployInfo = {
         recipe: '',
@@ -81,10 +81,91 @@ export module DeploymentLogic {
     };
 
     let deploying = false; // Flag to prevent multiple deployments at the same time
+    let deployStep = 0; // Variable to keep track of the deployment steps
 
     //*****************//
     //* Aux functions *//
-    //*****************// 
+    //*****************//
+
+    export async function openDeploymentDialog(): Promise<void> {
+        const dialogContent = document.createElement('div');
+        deployChooseProvider(dialogContent);
+        const contentWidget = new Widget({ node: dialogContent });
+    
+        const buttons = [
+            Dialog.createButton({
+                label: 'Back',
+                className: 'jp-mod-reject jp-mod-styled',
+                accept: false // Specify that this button doesn't close the dialog
+            }),
+            Dialog.createButton({
+                label: 'Next',
+                className: 'jp-mod-accept jp-mod-styled',
+                accept: false // Specify that this button doesn't close the dialog
+            })
+        ];
+    
+        const dialog = new Dialog({
+            title: 'Deploy Infrastructure',
+            body: contentWidget,
+            buttons: buttons,
+        });
+    
+        dialog.launch().then(result => {
+            if (result.button.label === 'Next') {
+                handleNext(dialogContent);
+            } else if (result.button.label === 'Back') {
+                handleBack(dialogContent);
+            }
+        });
+    };
+
+    function handleNext(dialogContent: HTMLElement): void {
+        switch (deployStep) {
+            // case 0:
+            //     deployChooseProvider(dialogContent);
+            //     break;
+            // case 1:
+            //     deployRecipeType(dialogContent);
+            //     break;
+            case 2:
+                deployProviderCredentials(dialogContent);
+                break;
+            case 3:
+                deployInfraConfiguration(dialogContent);
+                break;
+            case 4:
+                if (deployInfo.childs.length === 0) {
+                    deployFinalRecipe(dialogContent);
+                } else {
+                    deployChildsConfiguration(dialogContent);
+                }
+                break;
+            case 5:
+                deployFinalRecipe(dialogContent);
+                break;
+        }
+    };
+
+    function handleBack(dialogContent: HTMLElement): void {
+        switch (deployStep) {
+            // case 0:
+            //     closeDialog(dialogContent);
+            //     break;
+            case 1:
+                deployChooseProvider(dialogContent);
+                break;
+            case 3:
+                deployRecipeType(dialogContent);
+                break;
+            case 4:
+                deployProviderCredentials(dialogContent);
+                break;
+            case 5:
+                deployInfraConfiguration(dialogContent);
+                break;
+        }
+    };
 
     const createButton = (label: string, onClick: () => void): HTMLButtonElement => {
         const button = document.createElement('button');
@@ -174,7 +255,7 @@ export module DeploymentLogic {
             dialogBody.innerHTML = '';
             deploying = false;
         }
-    }
+    };
 
     function deployIMCommand(obj: DeployInfo, mergedTemplate: string): string {
         const pipeAuth = `${obj.infName}-auth-pipe`;
@@ -316,346 +397,6 @@ export module DeploymentLogic {
         }
     };
 
-    export async function openDeploymentDialog(): Promise<void>  {
-        // Create a container element for the dialog content
-        const dialogContent = document.createElement('div');
-
-        // Call deployChooseProvider to append buttons to dialogContent
-        DeploymentLogic.deployChooseProvider(dialogContent);
-
-        // Create a widget from the dialog content
-        const contentWidget = new Widget({ node: dialogContent });
-
-        const dialog = new Dialog({
-            title: 'Deploy Infrastructure',
-            body: contentWidget,
-            buttons: [Dialog.cancelButton(), Dialog.okButton()]
-        });
-
-        // Handle form submission
-        dialog.launch().then(result => {
-            // Logic to handle form submission
-            console.log('Form submitted');
-        });
-    };
-
-    //****************//
-    //*  Deployment  *//
-    //****************// 
-
-    export const deployChooseProvider = (dialogBody: HTMLElement): void => {
-        // Clear dialog body
-        dialogBody.innerHTML = '';
-
-        // Create paragraph element for instructions
-        const paragraph = document.createElement('p');
-        paragraph.textContent = 'Select infrastructure provider:';
-        dialogBody.appendChild(paragraph);
-
-        // Create buttons for each provider
-        const providers = ['OpenNebula', 'EC2', 'OpenStack'];
-        providers.forEach(provider => {
-            const button = document.createElement('button');
-            button.textContent = provider;
-            button.addEventListener('click', () => {
-
-                // Set deployInfo based on the selected provider
-                switch (provider) {
-                    case 'EC2':
-                        deployInfo.id = 'ec2';
-                        deployInfo.deploymentType = 'EC2';
-                        break;
-                    case 'OpenNebula':
-                        deployInfo.id = 'one';
-                        deployInfo.deploymentType = 'OpenNebula';
-                        break;
-                    case 'OpenStack':
-                        deployInfo.id = 'ost';
-                        deployInfo.deploymentType = 'OpenStack';
-                        break;
-                    default:
-                        console.error('Unsupported provider:', provider);
-                        return;
-                }
-
-                deployRecipeType(dialogBody);
-                console.log(`Provider ${provider} selected`);
-                console.log('deployInfo:', deployInfo);
-            });
-            dialogBody.appendChild(button);
-        });
-
-    };
-
-    const deployRecipeType = (dialogBody: HTMLElement): void => {
-        // Clear dialog body
-        dialogBody.innerHTML = '';
-
-        // Create paragraph element for instructions
-        const paragraph = document.createElement('p');
-        paragraph.textContent = 'Select recipe type:';
-        dialogBody.appendChild(paragraph);
-
-        // Define recipes and their corresponding child elements
-        const recipes = [
-            { name: 'Simple-node-disk', childs: ['galaxy', 'ansible_tasks', 'noderedvm', 'minio_compose'] },
-            { name: 'Slurm', childs: ['slurm_cluster', 'slurm_elastic', 'slurm_galaxy', 'docker_cluster'] },
-            { name: 'Kubernetes', childs: ['kubernetes', 'kubeapps', 'prometheus', 'minio_compose', 'noderedvm', 'influxdb', 'argo'] }
-        ];
-
-        // Create buttons for each recipe type
-        recipes.forEach(recipe => {
-            const button = createButton(recipe.name, () => {
-                // Clear existing checkboxes
-                clearCheckboxes(dialogBody);
-                deployInfo.recipe = recipe.name;
-                createCheckboxesForChilds(dialogBody, recipe.childs);
-            });
-
-            dialogBody.appendChild(button);
-        });
-
-    };
-
-    const createCheckboxesForChilds = async (dialogBody: HTMLElement, childs: string[]): Promise<void> => {
-        // Create paragraph element for checkboxes
-        const paragraph = document.createElement('p');
-        paragraph.textContent = 'Select optional recipe features:';
-        dialogBody.appendChild(paragraph);
-
-        // Create checkbox grid
-        const ul = document.createElement('ul');
-        ul.classList.add('checkbox-grid');
-
-        // Load YAML files and create checkboxes
-        await Promise.all(childs.map(async (child) => {
-            // Load YAML file asynchronously
-            const contentsManager = new ContentsManager();
-            const file = await contentsManager.get(`templates/${child.toLowerCase()}.yaml`);
-            const yamlContent = file.content as string;
-
-            // Parse YAML content
-            const parsedYaml: any = jsyaml.load(yamlContent);
-            const metadata = parsedYaml.metadata;
-            const templateName = metadata.template_name;
-
-            // Create list item for checkbox
-            const li = document.createElement('li');
-
-            // Create checkbox
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.id = `${child}-checkID`;
-            checkbox.name = child;
-            checkbox.value = templateName;
-
-            // Create label for checkbox
-            const label = document.createElement('label');
-            label.htmlFor = child;
-            label.textContent = ` ${templateName}`;
-
-            // Check if recipe is Slurm or Kubernetes
-            if ((deployInfo.recipe === 'Slurm' && child === 'slurm_cluster') ||
-                (deployInfo.recipe === 'Kubernetes' && child === 'kubernetes')) {
-                checkbox.checked = true; // Check the checkbox
-                checkbox.disabled = true; // Disable the checkbox
-            }
-
-            // Append checkbox and label to list item
-            li.appendChild(checkbox);
-            li.appendChild(label);
-
-            // Append list item to checkbox grid
-            ul.appendChild(li);
-        }));
-
-        // Append checkbox grid to dialog body
-        dialogBody.appendChild(ul);
-
-        // Create "Next" button
-        const nextButton = createButton('Next', () => {
-            // Populate deployInfo.childs
-            const selectedChilds = Array.from(dialogBody.querySelectorAll('input[type="checkbox"]:checked'))
-                .map((checkbox: Element) => (checkbox as HTMLInputElement).name);
-            deployInfo.childs = selectedChilds;
-            deployProviderCredentials(dialogBody);
-        });
-
-        dialogBody.appendChild(nextButton);
-    };
-
-    const deployProviderCredentials = (dialogBody: HTMLElement): void => {
-        dialogBody.innerHTML = '';
-        const form = document.createElement('form');
-        dialogBody.appendChild(form);
-
-        let text = '';
-
-        switch (deployInfo.deploymentType) {
-            case 'EC2':
-                const zone = "us-east-1";
-                const ami = "ami-0044130ca185d0880";
-
-                text = `<p>Introduce AWS IAM credentials.</p><br>`;
-                addFormInput(form, 'Access Key ID:', 'accessKeyId', deployInfo.username);
-                addFormInput(form, 'Secret Access Key:', 'secretAccessKey', deployInfo.password, 'password');
-                addFormInput(form, 'Availability zone:', 'availabilityZoneIn', zone);
-                addFormInput(form, 'AMI:', 'amiIn', ami);
-
-                if (deployInfo.recipe === "Simple-node-disk") {
-                    addFormInput(form, 'Port to be opened in AWS:', 'infrastructurePort', '1', 'number');
-                }
-                break;
-
-            case 'OpenNebula':
-            case 'OpenStack':
-                text = `<p>Introduce ${deployInfo.deploymentType === 'OpenNebula' ? 'ONE' : 'OST'} credentials.</p><br>`;
-                addFormInput(form, 'Username:', 'username', deployInfo.username);
-                addFormInput(form, 'Password:', 'password', deployInfo.password, 'password');
-                addFormInput(form, 'Host and port:', 'host', deployInfo.host);
-                if (deployInfo.deploymentType === 'OpenStack') {
-                    addFormInput(form, 'Tenant:', 'tenant', deployInfo.tenant);
-                }
-                break;
-        }
-
-        form.insertAdjacentHTML('afterbegin', text);
-
-        const backBtn = createButton('Back', () => deployRecipeType(dialogBody));
-        const nextButton = createButton('Next', () => {
-            switch (deployInfo.deploymentType) {
-                case 'EC2':
-                    const AWSzone = getInputValue('availabilityZoneIn');
-                    const AMI = getInputValue('amiIn');
-                    const imageURL = "aws://" + AWSzone + "/" + AMI;
-                    deployInfo.worker.image = imageURL;
-                    //deployInfo.worker.image = `aws://${AWSzone}/${AMI}`;
-
-                    if (deployInfo.recipe === "Simple-node-disk") {
-                        deployInfo.port = getInputValue('infrastructurePort');
-                    }
-                    break;
-                case 'OpenNebula':
-                case 'OpenStack':
-                    deployInfo.username = getInputValue('username');
-                    deployInfo.password = getInputValue('password');
-                    deployInfo.host = getInputValue('host');
-                    if (deployInfo.deploymentType === 'OpenStack') {
-                        deployInfo.tenant = getInputValue('tenant');
-                    }
-                    break;
-            }
-
-            deployInfraConfiguration(dialogBody);
-        });
-        dialogBody.appendChild(backBtn);
-        dialogBody.appendChild(nextButton);
-    };
-
-    const deployInfraConfiguration = (dialogBody: HTMLElement): void => {
-        dialogBody.innerHTML = '';
-        const form = document.createElement('form');
-        dialogBody.appendChild(form);
-
-        const introParagraph = document.createElement('p');
-        introParagraph.textContent = "Introduce worker VM specifications.";
-        form.appendChild(introParagraph);
-
-        addFormInput(form, 'Infrastructure name:', 'infrastructureName', deployInfo.infName);
-        addFormInput(form, 'Number of VMs:', 'infrastructureWorkers', '1', 'number', '1');
-        addFormInput(form, 'Number of CPUs for each VM:', 'infrastructureCPUs', '1', 'number', '1');
-        addFormInput(form, 'Memory for each VM:', 'infrastructureMem', '2 GB');
-        addFormInput(form, 'Size of the root disk of the VM(s):', 'infrastructureDiskSize', '20 GB');
-        addFormInput(form, 'Number of GPUs for each VM:', 'infrastructureGPUs', '1', 'number', '1');
-
-        const backBtn = createButton('Back', () => deployProviderCredentials(dialogBody));
-        const nextBtn = createButton(deployInfo.childs.length === 0 ? "Deploy" : "Next", () => {
-            deployInfo.infName = getInputValue('infrastructureName');
-            deployInfo.worker.num_instances = parseInt(getInputValue('infrastructureWorkers'));
-            deployInfo.worker.num_cpus = parseInt(getInputValue('infrastructureCPUs'));
-            deployInfo.worker.mem_size = getInputValue('infrastructureMem');
-            deployInfo.worker.disk_size = getInputValue('infrastructureDiskSize');
-            deployInfo.worker.num_gpus = parseInt(getInputValue('infrastructureGPUs'));
-
-            if (deployInfo.childs.length === 0) {
-                console.log('deployInfoA:', deployInfo);
-                deployFinalRecipe(dialogBody);
-            } else {
-                console.log('deployInfoB:', deployInfo);
-                deployChildsConfiguration(dialogBody);
-            }
-        });
-
-        dialogBody.appendChild(backBtn);
-        dialogBody.appendChild(nextBtn);
-    };
-
-    const deployChildsConfiguration = async (dialogBody: HTMLElement): Promise<void> => {
-        // Clear dialog
-        dialogBody.innerHTML = '';
-
-        const childs = deployInfo.childs;
-
-        // Container for buttons
-        const buttonsContainer = document.createElement('div');
-        buttonsContainer.id = 'buttons-container';
-        dialogBody.appendChild(buttonsContainer);
-
-        const forms = await Promise.all(childs.map((app, index) => createChildsForm(app, index, dialogBody, buttonsContainer)));
-
-        const nodeTemplates = forms.map(form => form.nodeTemplates);
-        const outputs = forms.map(form => form.outputs);
-
-        const backBtn = createButton('Back', () => deployProviderCredentials(dialogBody));
-        const nextButton = createButton('Deploy', async () => {
-            const contentsManager = new ContentsManager();
-            const userInputs = (await Promise.all(forms.map(async formData => {
-                const form = formData.form;
-                const childName = form.id.replace('form-', '');
-
-                // Fetch YAML content
-                const file = await contentsManager.get(`templates/${childName}.yaml`);
-                const yamlContent = file.content as string;
-                const yamlData: any = jsyaml.load(yamlContent);
-                const recipeInputs = yamlData.topology_template.inputs;
-
-                // Check if recipeInputs is not null or undefined
-                if (recipeInputs) {
-                    // Create an object to hold input structure and values
-                    const inputsWithValues: { [key: string]: { description: string; default: any; value: any } } = {};
-                    Object.entries(recipeInputs).forEach(([inputName, input]) => {
-                        const defaultValue = (input as any).default || '';
-                        const inputElement = form.querySelector<HTMLInputElement>(`[name="${inputName}"]`);
-                        const userInput = inputElement ? inputElement.value : ''; // Handle null case
-                        inputsWithValues[inputName] = {
-                            description: (input as any).description,
-                            default: defaultValue,
-                            value: userInput
-                        };
-                    });
-
-                    // Return the outputs to create final recipe to deploy
-                    return {
-                        name: childName,
-                        inputs: inputsWithValues,
-                        nodeTemplates: formData.nodeTemplates,
-                        outputs: formData.outputs
-                    };
-                } else {
-                    // Handle case where recipeInputs is null or undefined
-                    console.error(`Error: recipeInputs is null or undefined for ${childName}.yaml`);
-                    return null; // or handle the error in another appropriate way
-                }
-            }))).filter((input): input is UserInput => input !== null); // Filter out null values
-
-            deployFinalRecipe(dialogBody, userInputs, nodeTemplates, outputs);
-        });
-
-        // Set dialog buttons
-        dialogBody.appendChild(backBtn);
-        dialogBody.appendChild(nextButton);
-    };
-
     async function createChildsForm(app: string, index: number, deployDialog: HTMLElement, buttonsContainer: HTMLElement) {
         // Create form element
         const form = document.createElement('form');
@@ -737,6 +478,335 @@ export module DeploymentLogic {
         };
     };
 
+    //****************//
+    //*  Deployment  *//
+    //****************// 
+
+    const deployChooseProvider = (dialogBody: HTMLElement): void => {
+        deployStep = 0;
+
+        // Clear dialog body
+        dialogBody.innerHTML = '';
+
+        // Create paragraph element for instructions
+        const paragraph = document.createElement('p');
+        paragraph.textContent = 'Select infrastructure provider:';
+        dialogBody.appendChild(paragraph);
+
+        // Create buttons for each provider
+        const providers = ['OpenNebula', 'EC2', 'OpenStack'];
+        providers.forEach(provider => {
+            const button = document.createElement('button');
+            button.textContent = provider;
+            button.addEventListener('click', () => {
+
+                // Set deployInfo based on the selected provider
+                switch (provider) {
+                    case 'EC2':
+                        deployInfo.id = 'ec2';
+                        deployInfo.deploymentType = 'EC2';
+                        break;
+                    case 'OpenNebula':
+                        deployInfo.id = 'one';
+                        deployInfo.deploymentType = 'OpenNebula';
+                        break;
+                    case 'OpenStack':
+                        deployInfo.id = 'ost';
+                        deployInfo.deploymentType = 'OpenStack';
+                        break;
+                    default:
+                        console.error('Unsupported provider:', provider);
+                        return;
+                }
+
+                deployRecipeType(dialogBody);
+                console.log(`Provider ${provider} selected`);
+                console.log('deployInfo:', deployInfo);
+            });
+            dialogBody.appendChild(button);
+        });
+
+    };
+
+    const deployRecipeType = (dialogBody: HTMLElement): void => {
+        deployStep = 1;
+
+        // Clear dialog body
+        dialogBody.innerHTML = '';
+
+        // Create paragraph element for instructions
+        const paragraph = document.createElement('p');
+        paragraph.textContent = 'Select recipe type:';
+        dialogBody.appendChild(paragraph);
+
+        // Define recipes and their corresponding child elements
+        const recipes = [
+            { name: 'Simple-node-disk', childs: ['galaxy', 'ansible_tasks', 'noderedvm', 'minio_compose'] },
+            { name: 'Slurm', childs: ['slurm_cluster', 'slurm_elastic', 'slurm_galaxy', 'docker_cluster'] },
+            { name: 'Kubernetes', childs: ['kubernetes', 'kubeapps', 'prometheus', 'minio_compose', 'noderedvm', 'influxdb', 'argo'] }
+        ];
+
+        // Create buttons for each recipe type
+        recipes.forEach(recipe => {
+            const button = createButton(recipe.name, () => {
+                // Clear existing checkboxes
+                clearCheckboxes(dialogBody);
+                deployInfo.recipe = recipe.name;
+                createCheckboxesForChilds(dialogBody, recipe.childs);
+            });
+
+            dialogBody.appendChild(button);
+        });
+
+    };
+
+    const createCheckboxesForChilds = async (dialogBody: HTMLElement, childs: string[]): Promise<void> => {
+        deployStep = 2;
+
+        // Create paragraph element for checkboxes
+        const paragraph = document.createElement('p');
+        paragraph.textContent = 'Select optional recipe features:';
+        dialogBody.appendChild(paragraph);
+
+        // Create checkbox grid
+        const ul = document.createElement('ul');
+        ul.classList.add('checkbox-grid');
+
+        // Load YAML files and create checkboxes
+        await Promise.all(childs.map(async (child) => {
+            // Load YAML file asynchronously
+            const contentsManager = new ContentsManager();
+            const file = await contentsManager.get(`templates/${child.toLowerCase()}.yaml`);
+            const yamlContent = file.content as string;
+
+            // Parse YAML content
+            const parsedYaml: any = jsyaml.load(yamlContent);
+            const metadata = parsedYaml.metadata;
+            const templateName = metadata.template_name;
+
+            // Create list item for checkbox
+            const li = document.createElement('li');
+
+            // Create checkbox
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.id = `${child}-checkID`;
+            checkbox.name = child;
+            checkbox.value = templateName;
+
+            // Create label for checkbox
+            const label = document.createElement('label');
+            label.htmlFor = child;
+            label.textContent = ` ${templateName}`;
+
+            // Check if recipe is Slurm or Kubernetes
+            if ((deployInfo.recipe === 'Slurm' && child === 'slurm_cluster') ||
+                (deployInfo.recipe === 'Kubernetes' && child === 'kubernetes')) {
+                checkbox.checked = true; // Check the checkbox
+                checkbox.disabled = true; // Disable the checkbox
+            }
+
+            // Append checkbox and label to list item
+            li.appendChild(checkbox);
+            li.appendChild(label);
+
+            // Append list item to checkbox grid
+            ul.appendChild(li);
+        }));
+
+        // Append checkbox grid to dialog body
+        dialogBody.appendChild(ul);
+
+        // Create "Next" button
+        const nextButton = createButton('Next', () => {
+            // Populate deployInfo.childs
+            const selectedChilds = Array.from(dialogBody.querySelectorAll('input[type="checkbox"]:checked'))
+                .map((checkbox: Element) => (checkbox as HTMLInputElement).name);
+            deployInfo.childs = selectedChilds;
+            deployProviderCredentials(dialogBody);
+        });
+
+        dialogBody.appendChild(nextButton);
+    };
+
+    const deployProviderCredentials = (dialogBody: HTMLElement): void => {
+        deployStep = 3;
+
+        dialogBody.innerHTML = '';
+        const form = document.createElement('form');
+        dialogBody.appendChild(form);
+
+        let text = '';
+
+        switch (deployInfo.deploymentType) {
+            case 'EC2':
+                const zone = "us-east-1";
+                const ami = "ami-0044130ca185d0880";
+
+                text = `<p>Introduce AWS IAM credentials.</p><br>`;
+                addFormInput(form, 'Access Key ID:', 'accessKeyId', deployInfo.username);
+                addFormInput(form, 'Secret Access Key:', 'secretAccessKey', deployInfo.password, 'password');
+                addFormInput(form, 'Availability zone:', 'availabilityZoneIn', zone);
+                addFormInput(form, 'AMI:', 'amiIn', ami);
+
+                if (deployInfo.recipe === "Simple-node-disk") {
+                    addFormInput(form, 'Port to be opened in AWS:', 'infrastructurePort', '1', 'number');
+                }
+                break;
+
+            case 'OpenNebula':
+            case 'OpenStack':
+                text = `<p>Introduce ${deployInfo.deploymentType === 'OpenNebula' ? 'ONE' : 'OST'} credentials.</p><br>`;
+                addFormInput(form, 'Username:', 'username', deployInfo.username);
+                addFormInput(form, 'Password:', 'password', deployInfo.password, 'password');
+                addFormInput(form, 'Host and port:', 'host', deployInfo.host);
+                if (deployInfo.deploymentType === 'OpenStack') {
+                    addFormInput(form, 'Tenant:', 'tenant', deployInfo.tenant);
+                }
+                break;
+        }
+
+        form.insertAdjacentHTML('afterbegin', text);
+
+        const backBtn = createButton('Back', () => deployRecipeType(dialogBody));
+        const nextButton = createButton('Next', () => {
+            switch (deployInfo.deploymentType) {
+                case 'EC2':
+                    const AWSzone = getInputValue('availabilityZoneIn');
+                    const AMI = getInputValue('amiIn');
+                    const imageURL = "aws://" + AWSzone + "/" + AMI;
+                    deployInfo.worker.image = imageURL;
+                    //deployInfo.worker.image = `aws://${AWSzone}/${AMI}`;
+
+                    if (deployInfo.recipe === "Simple-node-disk") {
+                        deployInfo.port = getInputValue('infrastructurePort');
+                    }
+                    break;
+                case 'OpenNebula':
+                case 'OpenStack':
+                    deployInfo.username = getInputValue('username');
+                    deployInfo.password = getInputValue('password');
+                    deployInfo.host = getInputValue('host');
+                    if (deployInfo.deploymentType === 'OpenStack') {
+                        deployInfo.tenant = getInputValue('tenant');
+                    }
+                    break;
+            }
+
+            deployInfraConfiguration(dialogBody);
+        });
+        dialogBody.appendChild(backBtn);
+        dialogBody.appendChild(nextButton);
+    };
+
+    const deployInfraConfiguration = (dialogBody: HTMLElement): void => {
+        deployStep = 4;
+
+        dialogBody.innerHTML = '';
+        const form = document.createElement('form');
+        dialogBody.appendChild(form);
+
+        const introParagraph = document.createElement('p');
+        introParagraph.textContent = "Introduce worker VM specifications.";
+        form.appendChild(introParagraph);
+
+        addFormInput(form, 'Infrastructure name:', 'infrastructureName', deployInfo.infName);
+        addFormInput(form, 'Number of VMs:', 'infrastructureWorkers', '1', 'number', '1');
+        addFormInput(form, 'Number of CPUs for each VM:', 'infrastructureCPUs', '1', 'number', '1');
+        addFormInput(form, 'Memory for each VM:', 'infrastructureMem', '2 GB');
+        addFormInput(form, 'Size of the root disk of the VM(s):', 'infrastructureDiskSize', '20 GB');
+        addFormInput(form, 'Number of GPUs for each VM:', 'infrastructureGPUs', '1', 'number', '1');
+
+        const backBtn = createButton('Back', () => deployProviderCredentials(dialogBody));
+        const nextBtn = createButton(deployInfo.childs.length === 0 ? "Deploy" : "Next", () => {
+            deployInfo.infName = getInputValue('infrastructureName');
+            deployInfo.worker.num_instances = parseInt(getInputValue('infrastructureWorkers'));
+            deployInfo.worker.num_cpus = parseInt(getInputValue('infrastructureCPUs'));
+            deployInfo.worker.mem_size = getInputValue('infrastructureMem');
+            deployInfo.worker.disk_size = getInputValue('infrastructureDiskSize');
+            deployInfo.worker.num_gpus = parseInt(getInputValue('infrastructureGPUs'));
+
+            if (deployInfo.childs.length === 0) {
+                console.log('deployInfoA:', deployInfo);
+                deployFinalRecipe(dialogBody);
+            } else {
+                console.log('deployInfoB:', deployInfo);
+                deployChildsConfiguration(dialogBody);
+            }
+        });
+
+        dialogBody.appendChild(backBtn);
+        dialogBody.appendChild(nextBtn);
+    };
+
+    const deployChildsConfiguration = async (dialogBody: HTMLElement): Promise<void> => {
+        deployStep = 5;
+
+        // Clear dialog
+        dialogBody.innerHTML = '';
+
+        const childs = deployInfo.childs;
+
+        // Container for buttons
+        const buttonsContainer = document.createElement('div');
+        buttonsContainer.id = 'buttons-container';
+        dialogBody.appendChild(buttonsContainer);
+
+        const forms = await Promise.all(childs.map((app, index) => createChildsForm(app, index, dialogBody, buttonsContainer)));
+
+        const nodeTemplates = forms.map(form => form.nodeTemplates);
+        const outputs = forms.map(form => form.outputs);
+
+        const backBtn = createButton('Back', () => deployInfraConfiguration(dialogBody));
+        const nextButton = createButton('Deploy', async () => {
+            const contentsManager = new ContentsManager();
+            const userInputs = (await Promise.all(forms.map(async formData => {
+                const form = formData.form;
+                const childName = form.id.replace('form-', '');
+
+                // Fetch YAML content
+                const file = await contentsManager.get(`templates/${childName}.yaml`);
+                const yamlContent = file.content as string;
+                const yamlData: any = jsyaml.load(yamlContent);
+                const recipeInputs = yamlData.topology_template.inputs;
+
+                // Check if recipeInputs is not null or undefined
+                if (recipeInputs) {
+                    // Create an object to hold input structure and values
+                    const inputsWithValues: { [key: string]: { description: string; default: any; value: any } } = {};
+                    Object.entries(recipeInputs).forEach(([inputName, input]) => {
+                        const defaultValue = (input as any).default || '';
+                        const inputElement = form.querySelector<HTMLInputElement>(`[name="${inputName}"]`);
+                        const userInput = inputElement ? inputElement.value : ''; // Handle null case
+                        inputsWithValues[inputName] = {
+                            description: (input as any).description,
+                            default: defaultValue,
+                            value: userInput
+                        };
+                    });
+
+                    // Return the outputs to create final recipe to deploy
+                    return {
+                        name: childName,
+                        inputs: inputsWithValues,
+                        nodeTemplates: formData.nodeTemplates,
+                        outputs: formData.outputs
+                    };
+                } else {
+                    // Handle case where recipeInputs is null or undefined
+                    console.error(`Error: recipeInputs is null or undefined for ${childName}.yaml`);
+                    return null; // or handle the error in another appropriate way
+                }
+            }))).filter((input): input is UserInput => input !== null); // Filter out null values
+
+            deployFinalRecipe(dialogBody, userInputs, nodeTemplates, outputs);
+        });
+
+        // Set dialog buttons
+        dialogBody.appendChild(backBtn);
+        dialogBody.appendChild(nextButton);
+    };
+
     async function deployFinalRecipe(
         dialogBody: HTMLElement,
         populatedTemplates: UserInput[] = [],
@@ -795,6 +865,6 @@ export module DeploymentLogic {
             console.error('Error during deployment:', error);
             deploying = false;
         }
-    }
+    };
 
 }
