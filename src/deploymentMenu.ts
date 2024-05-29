@@ -87,84 +87,27 @@ export module DeploymentLogic {
     //* Aux functions *//
     //*****************//
 
-    export async function openDeploymentDialog(): Promise<void> {
+    export async function openDeploymentDialog(): Promise<void>  {
+        // Create a container element for the dialog content
         const dialogContent = document.createElement('div');
+
+        // Call deployChooseProvider to append buttons to dialogContent
         deployChooseProvider(dialogContent);
+
+        // Create a widget from the dialog content
         const contentWidget = new Widget({ node: dialogContent });
-    
-        const buttons = [
-            Dialog.createButton({
-                label: 'Back',
-                className: 'jp-mod-reject jp-mod-styled',
-                accept: false // Specify that this button doesn't close the dialog
-            }),
-            Dialog.createButton({
-                label: 'Next',
-                className: 'jp-mod-accept jp-mod-styled',
-                accept: false // Specify that this button doesn't close the dialog
-            })
-        ];
-    
+
         const dialog = new Dialog({
             title: 'Deploy Infrastructure',
             body: contentWidget,
-            buttons: buttons,
+            buttons: []
         });
-    
+
+        // Handle form submission
         dialog.launch().then(result => {
-            if (result.button.label === 'Next') {
-                handleNext(dialogContent);
-            } else if (result.button.label === 'Back') {
-                handleBack(dialogContent);
-            }
+            // Logic to handle form submission
+            console.log('Form submitted');
         });
-    };
-
-    function handleNext(dialogContent: HTMLElement): void {
-        switch (deployStep) {
-            // case 0:
-            //     deployChooseProvider(dialogContent);
-            //     break;
-            // case 1:
-            //     deployRecipeType(dialogContent);
-            //     break;
-            case 2:
-                deployProviderCredentials(dialogContent);
-                break;
-            case 3:
-                deployInfraConfiguration(dialogContent);
-                break;
-            case 4:
-                if (deployInfo.childs.length === 0) {
-                    deployFinalRecipe(dialogContent);
-                } else {
-                    deployChildsConfiguration(dialogContent);
-                }
-                break;
-            case 5:
-                deployFinalRecipe(dialogContent);
-                break;
-        }
-    };
-
-    function handleBack(dialogContent: HTMLElement): void {
-        switch (deployStep) {
-            // case 0:
-            //     closeDialog(dialogContent);
-            //     break;
-            case 1:
-                deployChooseProvider(dialogContent);
-                break;
-            case 3:
-                deployRecipeType(dialogContent);
-                break;
-            case 4:
-                deployProviderCredentials(dialogContent);
-                break;
-            case 5:
-                deployInfraConfiguration(dialogContent);
-                break;
-        }
     };
 
     const createButton = (label: string, onClick: () => void): HTMLButtonElement => {
@@ -178,13 +121,10 @@ export module DeploymentLogic {
         return button;
     };
 
-    const clearCheckboxes = (dialogBody: HTMLElement): void => {
-        // Remove all elements except for the three buttons
-        const elementsToRemove = dialogBody.querySelectorAll(':not(button)');
-        elementsToRemove.forEach((element) => {
-            // Check if the element is not one of the three buttons
-            if (!element.classList.contains('recipe-button')) {
-                element.remove(); // Remove the element
+    const clearDialogElements = (dialogBody: HTMLElement): void => {
+        Array.from(dialogBody.children).forEach((child) => {
+            if (!child.classList.contains('recipe-button')) {
+                dialogBody.removeChild(child);
             }
         });
     };
@@ -210,18 +150,18 @@ export module DeploymentLogic {
 
     async function handleKernelOutput(output: string | undefined, dialogBody: HTMLElement) {
         if (!output) return;
-    
+
         if (output.toLowerCase().includes('error')) {
             alert(output);
             deploying = false;
             deployInfo.childs.length === 0 ? deployInfraConfiguration(dialogBody) : deployChildsConfiguration(dialogBody);
         } else {
             alert(output);
-    
+
             // Extract infrastructure ID
             const idMatch = output.match(/ID: ([\w-]+)/);
             const infrastructureID = idMatch ? idMatch[1] : '';
-    
+
             // Create a JSON object for infrastructure data
             const infrastructureData: InfrastructureData = {
                 name: deployInfo.infName,
@@ -233,15 +173,15 @@ export module DeploymentLogic {
                 user: deployInfo.username,
                 pass: deployInfo.password,
             };
-    
+
             const cmdSave = await saveToInfrastructureList(infrastructureData);
-    
+
             // Execute kernel command to save data
             try {
                 const kernelManager = new KernelManager();
                 const kernel = await kernelManager.startNew();
                 const future = kernel.requestExecute({ code: cmdSave });
-    
+
                 future.onIOPub = (msg) => {
                     const content = msg.content as any;
                     const outputText = content.text || (content.data && content.data['text/plain']);
@@ -303,8 +243,8 @@ export module DeploymentLogic {
     };
 
     async function saveToInfrastructureList(obj: InfrastructureData) {
-        const filePath = `${process.env.PWD}/infrastructuresList.json`;
-    
+        const filePath = `$PWD/infrastructuresList.json`;
+
         // Construct the bash command
         const cmd = `
             %%bash
@@ -313,7 +253,7 @@ export module DeploymentLogic {
             newJson=$(echo "$existingJson" | jq -c '.infrastructures += [${JSON.stringify(obj)}]')
             echo "$newJson" > ${filePath}
         `;
-    
+
         console.log("Bash command:", cmd);
         return cmd;
     }
@@ -484,7 +424,7 @@ export module DeploymentLogic {
 
     const deployChooseProvider = (dialogBody: HTMLElement): void => {
         deployStep = 0;
-
+        console.log(deployStep);
         // Clear dialog body
         dialogBody.innerHTML = '';
 
@@ -549,15 +489,16 @@ export module DeploymentLogic {
         // Create buttons for each recipe type
         recipes.forEach(recipe => {
             const button = createButton(recipe.name, () => {
-                // Clear existing checkboxes
-                clearCheckboxes(dialogBody);
+                clearDialogElements(dialogBody);
                 deployInfo.recipe = recipe.name;
                 createCheckboxesForChilds(dialogBody, recipe.childs);
             });
-
+            button.classList.add('recipe-button');
             dialogBody.appendChild(button);
         });
 
+        const backBtn = createButton('Back', () => deployChooseProvider(dialogBody));
+        dialogBody.appendChild(backBtn);
     };
 
     const createCheckboxesForChilds = async (dialogBody: HTMLElement, childs: string[]): Promise<void> => {
@@ -573,16 +514,15 @@ export module DeploymentLogic {
         ul.classList.add('checkbox-grid');
 
         // Load YAML files and create checkboxes
-        await Promise.all(childs.map(async (child) => {
+        const contentsManager = new ContentsManager();
+        const promises = childs.map(async (child) => {
             // Load YAML file asynchronously
-            const contentsManager = new ContentsManager();
             const file = await contentsManager.get(`templates/${child.toLowerCase()}.yaml`);
             const yamlContent = file.content as string;
 
             // Parse YAML content
             const parsedYaml: any = jsyaml.load(yamlContent);
-            const metadata = parsedYaml.metadata;
-            const templateName = metadata.template_name;
+            const templateName = parsedYaml.metadata.template_name;
 
             // Create list item for checkbox
             const li = document.createElement('li');
@@ -612,7 +552,9 @@ export module DeploymentLogic {
 
             // Append list item to checkbox grid
             ul.appendChild(li);
-        }));
+        });
+
+        await Promise.all(promises);
 
         // Append checkbox grid to dialog body
         dialogBody.appendChild(ul);
@@ -815,47 +757,47 @@ export module DeploymentLogic {
     ): Promise<void> {
         // Clear the dialog body
         dialogBody.innerHTML = '';
-    
+
         // Ensure only one deployment occurs at a time
         if (deploying) {
             alert('Previous deploy has not finished.');
             return;
         }
         deploying = true;
-    
+
         try {
             const contentsManager = new ContentsManager();
             const file = await contentsManager.get('templates/simple-node-disk.yaml');
             const yamlContent = file.content;
             const parsedTemplate = jsyaml.load(yamlContent) as any;
-    
+
             // Add infrastructure name and a hash to the metadata
             const hash = await computeHash(JSON.stringify(deployInfo));
             parsedTemplate.metadata = parsedTemplate.metadata || {};
             parsedTemplate.metadata.infra_name = `jupyter_${hash}`;
-    
+
             // Populate the template with worker values
             const workerInputs = parsedTemplate.topology_template.inputs;
             Object.keys(deployInfo.worker).forEach(key => {
                 workerInputs[key] = workerInputs[key] || { type: typeof deployInfo.worker[key] };
                 workerInputs[key].default = deployInfo.worker[key];
             });
-    
+
             // Merge templates
             const mergedTemplate = await mergeTOSCARecipes(parsedTemplate, populatedTemplates, nodeTemplates, outputs);
             const mergedYamlContent = jsyaml.dump(mergedTemplate);
-    
+
             // Create deploy command
             const cmdDeploy = deployIMCommand(deployInfo, mergedYamlContent);
-    
+
             // Show loading spinner
             dialogBody.innerHTML = '<div class="loader"></div>';
-    
+
             // Execute the deployment command
             const kernelManager = new KernelManager();
             const kernel = await kernelManager.startNew();
             const future = kernel.requestExecute({ code: cmdDeploy });
-    
+
             future.onIOPub = (msg) => {
                 const content = msg.content as any;
                 const outputText = content.text || (content.data && content.data['text/plain']);
