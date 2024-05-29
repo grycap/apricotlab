@@ -30,61 +30,44 @@
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
   }
+  
+/* Styles for the dialog */
+.dialog-content {
+  padding: 20px;
+  font-family: Arial, sans-serif;
+}
 
-/*.deployments-table {
-    border: 1px solid black;
-    border-collapse: collapse;
-    width: 100%;
-  }
-   table, td, th {
-    border: 1px solid black;
-    padding-left: 10px;
-    padding-right: 10px;
-  } 
-  .btn-custom { 
-    background-color: #EF8200;
-    color: #EF8200;
-  }
-  
-  
-  .deployments-table th,
-  .deployments-table td {
-    padding: 8px;
-    text-align: left;
-    border-bottom: 1px solid black;
-  }
-  
-  .deployments-table th {
-    font-weight: bold;
-  }
-  
-  .deployments-table tr:nth-child(even) {
-    background-color: #f2f2f2;
-  }
-  
-  .deployments-table tr:hover {
-    background-color: #ddd;
-  }
-  
-  
-  
-  ul {
-    padding-inline-start: 0%;
-    line-height: 0.5;
-  }
-  
-  .checkbox-grid li {
-      display: block;
-  }
-  
-  .checkbox-grid label {
-    margin-left: 5px;
-  }
-  
-  .formButton {
-    border-radius: 10px 10px 0 0;
-    text-align: center;
-    display: inline-block;
-    cursor: pointer;
-  }
-   */
+.dialog-title {
+  font-size: 24px;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+
+/* Styles for the table */
+.deployments-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+  font-size: 14px;
+}
+
+.deployments-table th, .deployments-table td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: left;
+}
+
+.deployments-table tr:nth-child(even) {
+  background-color: #f2f2f2;
+}
+
+.deployments-table tr:hover {
+  background-color: #ddd;
+}
+
+.deployments-table th {
+  padding-top: 12px;
+  padding-bottom: 12px;
+  background-color: #dd9f48;
+  color: white;
+}
