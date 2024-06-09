@@ -271,6 +271,8 @@ class Apricot_Magics(Magics):
         ]
 
         try:
+            current_vm_id, ip_address, status, provider_type, os_image = None, None, None, None, None
+
             # Execute command and capture output
             result = run(cmd_getinfo, stdout=PIPE, stderr=PIPE, check=True, text=True)
             state_output = result.stdout
@@ -278,7 +280,6 @@ class Apricot_Magics(Magics):
             state_lines = state_output.split('\n')
 
             for line in state_lines:
-                current_vm_id, ip_address, status, provider_type, os_image = None, None, None, None, None
                 if line.startswith("Info about VM with ID:"):
                     current_vm_id = line.split(":")[1].strip()
                 if line.strip().startswith("net_interface.1.ip ="):
@@ -292,6 +293,8 @@ class Apricot_Magics(Magics):
 
                 if all((current_vm_id, ip_address, status, provider_type, os_image)):
                     vm_info_list.append([current_vm_id, ip_address, status, provider_type, os_image])
+                    # Reset variables for the next VM
+                    current_vm_id, ip_address, status, provider_type, os_image = None, None, None, None, None
 
         except CalledProcessError as e:
             print(f"Error: {e.output.strip()}")
