@@ -110,6 +110,10 @@ topology_template:
         ssh_port:
           source: 22
           protocol: tcp
+    image:
+      type: string
+      description: Image to be used for the VM
+      default: ''
 
   node_templates:
 
@@ -133,7 +137,7 @@ topology_template:
             gpu_model: { get_input: gpu_model }
         os:
           properties:
-            type: linux
+            image: { get_input: image }
       # Add dummy task to activate context
       interfaces:
         Standard:

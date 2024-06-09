@@ -16,6 +16,8 @@ export module DeploymentLogic {
         password: string;
         port: string;
         infName: string;
+        authVersion: string,
+        domain: string,
         worker: {
             num_instances: number;
             num_cpus: number;
@@ -57,6 +59,8 @@ export module DeploymentLogic {
         tenant: string;
         user: string;
         pass: string;
+        authVersion: string,
+        domain: string,
     };
 
     let deployInfo: DeployInfo = {
@@ -69,6 +73,8 @@ export module DeploymentLogic {
         password: 'RamsesOpenNebula9',
         port: '',
         infName: 'infra-name',
+        authVersion: '',
+        domain: '',
         worker: {
             num_instances: 1,
             num_cpus: 1,
@@ -80,6 +86,8 @@ export module DeploymentLogic {
         childs: [],
     };
 
+    let imageOptions: { uri: string; name: string }[] = [];
+
     let deploying = false; // Flag to prevent multiple deployments at the same time
     let deployStep = 0; // Variable to keep track of the deployment steps
 
@@ -87,7 +95,7 @@ export module DeploymentLogic {
     //* Aux functions *//
     //*****************//
 
-    export async function openDeploymentDialog(): Promise<void>  {
+    export async function openDeploymentDialog(): Promise<void> {
         // Create a container element for the dialog content
         const dialogContent = document.createElement('div');
 
@@ -123,7 +131,7 @@ export module DeploymentLogic {
 
     const clearDialogElements = (dialogBody: HTMLElement): void => {
         Array.from(dialogBody.children).forEach((child) => {
-            if (!child.classList.contains('recipe-button')) {
+            if (!child.classList.contains('recipe-button') && !child.classList.contains('back-button')) {
                 dialogBody.removeChild(child);
             }
         });
@@ -148,7 +156,7 @@ export module DeploymentLogic {
         return input.value;
     };
 
-    async function handleKernelOutput(output: string | undefined, dialogBody: HTMLElement) {
+    async function handleFinalDeployOutput(output: string | undefined, dialogBody: HTMLElement) {
         if (!output) return;
 
         if (output.toLowerCase().includes('error')) {
@@ -172,6 +180,8 @@ export module DeploymentLogic {
                 tenant: deployInfo.tenant,
                 user: deployInfo.username,
                 pass: deployInfo.password,
+                authVersion: deployInfo.authVersion,
+                domain: deployInfo.domain
             };
 
             const cmdSave = await saveToInfrastructureList(infrastructureData);
@@ -185,8 +195,7 @@ export module DeploymentLogic {
                 future.onIOPub = (msg) => {
                     const content = msg.content as any;
                     const outputText = content.text || (content.data && content.data['text/plain']);
-                    console.log("Kernel message:", outputText);
-                    handleKernelOutput(outputText, dialogBody);
+                    handleFinalDeployOutput(outputText, dialogBody);
                 };
             } catch (error) {
                 console.error('Error executing kernel command:', error);
@@ -194,6 +203,46 @@ export module DeploymentLogic {
             }
             dialogBody.innerHTML = '';
             deploying = false;
+        }
+    };
+
+    async function createImagesDropdown(output: string | undefined, dialogBody: HTMLElement) {
+        if (!output) {
+            console.error('Output is empty or undefined.');
+            return;
+        }
+    
+        console.log('Original output:', output);
+    
+        // Find the first occurrence of '[' and get the substring from there
+        const jsonStartIndex = output.indexOf('[');
+        if (jsonStartIndex === -1) {
+            console.error('No JSON array found in the output.');
+            return;
+        }
+    
+        const jsonOutput = output.substring(jsonStartIndex).trim();
+        console.log('JSON output:', jsonOutput);
+    
+        try {
+            const images: { uri: string; name: string }[] = JSON.parse(jsonOutput);
+            imageOptions = images;
+            console.log('Parsed images:', images);
+    
+            // Create dropdown menu with image options
+            const select = document.createElement('select');
+            select.id = 'imageDropdown';
+    
+            imageOptions.forEach(image => {
+                const option = document.createElement('option');
+                option.value = image.uri;
+                option.textContent = image.name;
+                select.appendChild(option);
+            });
+    
+            dialogBody.appendChild(select);
+        } catch (error) {
+            console.error('Error parsing JSON:', error);
         }
     };
 
@@ -219,22 +268,23 @@ export module DeploymentLogic {
         authContent += `id = ${obj.id}; type = ${obj.deploymentType}; host = ${obj.host}; username = ${obj.username}; password = ${obj.password};`;
 
         if (obj.deploymentType === 'OpenStack') {
-            authContent += ` tenant = ${obj.tenant};`;
+            authContent += ` tenant = ${obj.tenant}; authVersion = ${obj.authVersion},
+                domain = ${obj.domain}`;
         } else if (obj.deploymentType === 'AWS') {
             authContent += ` image = ${obj.worker.image};`;
         }
 
         cmd += `echo -e "${authContent}" > $PWD/${pipeAuth} &
-            # Create final command where the output is stored in "imOut"
-            imOut=$(python3 /usr/local/bin/im_client.py -a $PWD/${pipeAuth} create ${templatePath} -r https://im.egi.eu/im)
+            # Create final command where the output is stored in "imageOut"
+            imageOut=$(python3 /usr/local/bin/im_client.py -a $PWD/${pipeAuth} create ${templatePath} -r https://im.egi.eu/im)
             # Remove pipe
             rm -f $PWD/${pipeAuth} &> /dev/null
             # Print IM output on stderr or stdout
             if [ $? -ne 0 ]; then
-                >&2 echo -e $imOut
+                >&2 echo -e $imageOut
                 exit 1
             else
-                echo -e $imOut
+                echo -e $imageOut
             fi
             `;
 
@@ -418,6 +468,48 @@ export module DeploymentLogic {
         };
     };
 
+    function selectImage(obj: DeployInfo): string {
+        const pipeAuth = `${obj.infName}-auth-pipe`;
+
+        let cmd = `%%bash
+            PWD=$(pwd)
+            # Remove pipes if they exist
+            rm -f $PWD/${pipeAuth} &> /dev/null
+            # Create directory for templates
+            mkdir -p $PWD/templates &> /dev/null
+            # Create pipes
+            mkfifo $PWD/${pipeAuth}
+        `;
+
+        // Command to create the IM-cli credentials
+        let authContent = `id = im; type = InfrastructureManager; username = user; password = pass;\n`;
+        authContent += `id = ${obj.id}; type = ${obj.deploymentType}; host = ${obj.host}; username = ${obj.username}; password = ${obj.password};`;
+
+        if (obj.deploymentType === 'OpenStack') {
+            authContent += ` tenant = ${obj.tenant}; authVersion = ${obj.authVersion},
+                domain = ${obj.domain}`;
+        } else if (obj.deploymentType === 'AWS') {
+            authContent += ` image = ${obj.worker.image};`;
+        }
+
+        cmd += `echo -e "${authContent}" > $PWD/${pipeAuth} &
+            # Create final command where the output is stored in "imageOut"
+            imageOut=$(python3 /usr/local/bin/im_client.py -a $PWD/${pipeAuth} -r https://im.egi.eu/im cloudimages ${obj.id})
+            # Remove pipe
+            rm -f $PWD/${pipeAuth} &> /dev/null
+            # Print IM output on stderr or stdout
+            if [ $? -ne 0 ]; then
+                >&2 echo -e $imageOut
+                exit 1
+            else
+                echo -e $imageOut
+            fi
+            `;
+
+        console.log("cmd", cmd);
+        return cmd;
+    };
+
     //****************//
     //*  Deployment  *//
     //****************// 
@@ -497,7 +589,9 @@ export module DeploymentLogic {
             dialogBody.appendChild(button);
         });
 
+        // Create a back button
         const backBtn = createButton('Back', () => deployChooseProvider(dialogBody));
+        backBtn.classList.add('back-button');
         dialogBody.appendChild(backBtn);
     };
 
@@ -604,6 +698,8 @@ export module DeploymentLogic {
                 addFormInput(form, 'Host and port:', 'host', deployInfo.host);
                 if (deployInfo.deploymentType === 'OpenStack') {
                     addFormInput(form, 'Tenant:', 'tenant', deployInfo.tenant);
+                    addFormInput(form, 'Domain:', 'domain', deployInfo.domain);
+                    addFormInput(form, 'Auth version:', 'authVersion', deployInfo.authVersion);
                 }
                 break;
         }
@@ -631,6 +727,8 @@ export module DeploymentLogic {
                     deployInfo.host = getInputValue('host');
                     if (deployInfo.deploymentType === 'OpenStack') {
                         deployInfo.tenant = getInputValue('tenant');
+                        deployInfo.domain = getInputValue('domain');
+                        deployInfo.authVersion = getInputValue('authVersionº');
                     }
                     break;
             }
@@ -641,7 +739,7 @@ export module DeploymentLogic {
         dialogBody.appendChild(nextButton);
     };
 
-    const deployInfraConfiguration = (dialogBody: HTMLElement): void => {
+    async function deployInfraConfiguration(dialogBody: HTMLElement): Promise<void> {
         deployStep = 4;
 
         dialogBody.innerHTML = '';
@@ -659,6 +757,21 @@ export module DeploymentLogic {
         addFormInput(form, 'Size of the root disk of the VM(s):', 'infrastructureDiskSize', '20 GB');
         addFormInput(form, 'Number of GPUs for each VM:', 'infrastructureGPUs', '1', 'number', '1');
 
+        // Create select image command
+        const cmdImageNames = selectImage(deployInfo);
+
+        // Execute the deployment command
+        const kernelManager = new KernelManager();
+        const kernel = await kernelManager.startNew();
+        const future = kernel.requestExecute({ code: cmdImageNames });
+
+        future.onIOPub = (msg) => {
+            const content = msg.content as any;
+            const outputText = content.text || (content.data && content.data['text/plain']);
+            createImagesDropdown(outputText, dialogBody);
+            console.log('Output in deployInfraConfiguration:', outputText);
+        };
+
         const backBtn = createButton('Back', () => deployProviderCredentials(dialogBody));
         const nextBtn = createButton(deployInfo.childs.length === 0 ? "Deploy" : "Next", () => {
             deployInfo.infName = getInputValue('infrastructureName');
@@ -667,12 +780,16 @@ export module DeploymentLogic {
             deployInfo.worker.mem_size = getInputValue('infrastructureMem');
             deployInfo.worker.disk_size = getInputValue('infrastructureDiskSize');
             deployInfo.worker.num_gpus = parseInt(getInputValue('infrastructureGPUs'));
+            // Get selected image from the dropdown
+            const selectedImageUri = (document.getElementById('imageDropdown') as HTMLSelectElement).value;
+            console.log('selectedImageUri', selectedImageUri);
+            deployInfo.worker.image = selectedImageUri;
+
+            console.log('deployinfo childs', deployInfo.childs);
 
             if (deployInfo.childs.length === 0) {
-                console.log('deployInfoA:', deployInfo);
                 deployFinalRecipe(dialogBody);
             } else {
-                console.log('deployInfoB:', deployInfo);
                 deployChildsConfiguration(dialogBody);
             }
         });
@@ -801,7 +918,7 @@ export module DeploymentLogic {
             future.onIOPub = (msg) => {
                 const content = msg.content as any;
                 const outputText = content.text || (content.data && content.data['text/plain']);
-                handleKernelOutput(outputText, dialogBody);
+                handleFinalDeployOutput(outputText, dialogBody);
             };
         } catch (error) {
             console.error('Error during deployment:', error);
@@ -810,3 +927,55 @@ export module DeploymentLogic {
     };
 
 }
+
+
+// {
+//         // Create footer element
+//         const footer = document.createElement('div');
+//         footer.classList.add('jp-Dialog-footer');
+
+//         const backButton = createButton('Back', () => {
+//             switch (deployStep) {
+//                 case 1:
+//                     deployChooseProvider(dialogContent);
+//                     break;
+//                 case 3:
+//                     deployRecipeType(dialogContent);
+//                     break;
+//                 case 4:
+//                     deployProviderCredentials(dialogContent);
+//                     break;
+//                 case 5:
+//                     deployInfraConfiguration(dialogContent);
+//                     break;
+//             }
+//         });
+
+//         const nextButton = createButton('Next', () => {
+//             switch (deployStep) {
+//                 case 2:
+//                     deployProviderCredentials(dialogContent);
+//                     break;
+//                 case 3:
+//                     deployInfraConfiguration(dialogContent);
+//                     break;
+//                 case 4:
+//                     deployChildsConfiguration(dialogContent);
+//                     break;
+//                 case 5:
+//                     if (deployInfo.childs.length === 0) {
+//                         deployChildsConfiguration(dialogContent);
+//                     } else {
+//                         deployFinalRecipe(dialogContent);
+//                     }
+//                     break;
+//             }
+//         });
+
+//         // Append buttons to the footer
+//         footer.appendChild(backButton);
+//         footer.appendChild(nextButton);
+
+//         // Append footer to the dialog
+//         dialog.node.appendChild(footer);
+//     }
