@@ -292,7 +292,7 @@ export module DeploymentLogic {
         authContent += `id = ${obj.id}; type = ${obj.deploymentType}; host = ${obj.host}; username = ${obj.username}; password = ${obj.password};`;
 
         if (obj.deploymentType === 'OpenStack') {
-            authContent += ` tenant = ${obj.tenant}; authVersion = ${obj.authVersion},
+            authContent += ` tenant = ${obj.tenant}; auth_version = ${obj.authVersion},
                 domain = ${obj.domain}`;
         } else if (obj.deploymentType === 'EGI') {
             authContent += ` vo = ${obj.vo}; token = ${obj.EGIToken}`;
@@ -520,7 +520,7 @@ export module DeploymentLogic {
         authContent += `id = ${obj.id}; type = ${obj.deploymentType}; host = ${obj.host}; username = ${obj.username}; password = ${obj.password};`;
 
         if (obj.deploymentType === 'OpenStack') {
-            authContent += ` tenant = ${obj.tenant}; authVersion = ${obj.authVersion},
+            authContent += ` tenant = ${obj.tenant}; auth_version = ${obj.authVersion},
                 domain = ${obj.domain}`;
         } else if (obj.deploymentType === 'EGI') {
             authContent += ` vo = ${obj.vo}; token = ${obj.EGIToken}`;
@@ -813,7 +813,7 @@ export module DeploymentLogic {
             const content = msg.content as any;
             const outputText = content.text || (content.data && content.data['text/plain']);
             createImagesDropdown(outputText, dialogBody);
-            alert(outputText);
+            alert('Wrong provider credentials. No OS image found.');
             console.log('Output in deployInfraConfiguration:', outputText);
         };
 

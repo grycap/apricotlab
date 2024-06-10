@@ -38,7 +38,7 @@ class Apricot_Magics(Magics):
         auth_content = f"type = InfrastructureManager; username = {found_infrastructure['IMuser']}; password = {found_infrastructure['IMpass']};\n"
         # Additional credentials based on infrastructure type
         if found_infrastructure['type'] == "OpenStack":
-            auth_content += f"id = {found_infrastructure['id']}; type = {found_infrastructure['type']}; username = {found_infrastructure['user']}; password = {found_infrastructure['pass']}; host = {found_infrastructure['host']}; tenant = {found_infrastructure['tenant']}; authVersion = {found_infrastructure['authVersion']}; domain = {found_infrastructure['domain']}"
+            auth_content += f"id = {found_infrastructure['id']}; type = {found_infrastructure['type']}; username = {found_infrastructure['user']}; password = {found_infrastructure['pass']}; host = {found_infrastructure['host']}; tenant = {found_infrastructure['tenant']}; auth_version = {found_infrastructure['authVersion']}; domain = {found_infrastructure['domain']}"
         elif found_infrastructure['type'] == "OpenNebula":
             auth_content += f"id = {found_infrastructure['id']}; type = {found_infrastructure['type']}; username = {found_infrastructure['user']}; password = {found_infrastructure['pass']}; host = {found_infrastructure['host']}"
         elif found_infrastructure['type'] == "EC2":
@@ -464,7 +464,7 @@ class Apricot_Magics(Magics):
                     print("Error: Unable to generate private key. Missing infrastructure ID or VM ID.")
                     return "Failed"
 
-                cmd_ssh = ['ssh', '-i', 'key.pem', f'root@{host_ip}'] + cmd_command
+                cmd_ssh = ['ssh', '-i', 'key.pem', '-o', 'StrictHostKeyChecking=no', f'root@{host_ip}'] + cmd_command
 
                 try:
                     result = run(cmd_ssh, stdout=PIPE, stderr=PIPE, universal_newlines=True)
@@ -475,7 +475,7 @@ class Apricot_Magics(Magics):
                     else:
                         print(f"Status: fail {result.returncode}\n")
                         print(result.stderr + "\n")
-                        return "Fail"
+                        return "Fails"
                 except CalledProcessError as e:
                     print(f"Error: {e}")
                     return "Fail"
@@ -553,7 +553,8 @@ class Apricot_Magics(Magics):
 
                 return "Done"
 
-        return "Fail"
+        return "Done"
+
 
 
 def load_ipython_extension(ipython):
