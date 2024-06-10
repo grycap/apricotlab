@@ -7,6 +7,8 @@ import { Dialog } from '@jupyterlab/apputils';
 export module DeploymentLogic {
 
     interface DeployInfo {
+        IMuser: string;
+        IMpass: string;
         recipe: string;
         id: string;
         deploymentType: string;
@@ -53,6 +55,8 @@ export module DeploymentLogic {
     };
 
     interface InfrastructureData {
+        IMuser: string;
+        IMpass: string;
         name: string;
         infrastructureID: string;
         id: string;
@@ -68,6 +72,8 @@ export module DeploymentLogic {
     };
 
     let deployInfo: DeployInfo = {
+        IMuser: '',
+        IMpass: '',
         recipe: '',
         id: '',
         deploymentType: '',
@@ -178,6 +184,8 @@ export module DeploymentLogic {
 
             // Create a JSON object for infrastructure data
             const infrastructureData: InfrastructureData = {
+                IMuser: deployInfo.IMuser,
+                IMpass: deployInfo.IMpass,
                 name: deployInfo.infName,
                 infrastructureID,
                 id: deployInfo.id,
@@ -253,6 +261,14 @@ export module DeploymentLogic {
             console.error('Error parsing JSON:', error);
         }
     };
+    
+    function getEGIToken() {
+        let egiToken = `%%bash
+            TOKEN=$(cat /var/run/secrets/egi.eu/access_token)
+            echo $TOKEN
+        `;
+        return egiToken;
+    }
 
     function deployIMCommand(obj: DeployInfo, mergedTemplate: string): string {
         const pipeAuth = `${obj.infName}-auth-pipe`;
@@ -714,7 +730,6 @@ export module DeploymentLogic {
                 text = `<p>Introduce EGI credentials.</p><br>`;
                 addFormInput(form, 'Site name:', 'site', deployInfo.host);
                 addFormInput(form, 'VO:', 'vo', deployInfo.vo);
-                addFormInput(form, 'Token:', 'token', deployInfo.token);
                 break;
         }
 
@@ -730,10 +745,6 @@ export module DeploymentLogic {
                     deployInfo.worker.image = imageURL;
                     //deployInfo.worker.image = `aws://${region}/${AMI}`;
 
-                    if (deployInfo.recipe === "Simple-node-disk") {
-                        deployInfo.port = getInputValue('infrastructurePort');
-                    }
-                    break;
                 case 'OpenNebula':
                 case 'OpenStack':
                     deployInfo.username = getInputValue('username');
@@ -744,6 +755,11 @@ export module DeploymentLogic {
                         deployInfo.domain = getInputValue('domain');
                         deployInfo.authVersion = getInputValue('authVersion');
                     }
+                    break;
+                case 'EGI':
+                    deployInfo.host = getInputValue('site');
+                    deployInfo.vo = getInputValue('vo');
+                    deployInfo.token = getEGIToken();
                     break;
             }
 
