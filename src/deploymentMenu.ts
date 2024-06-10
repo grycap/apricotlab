@@ -21,7 +21,7 @@ export module DeploymentLogic {
         authVersion: string,
         domain: string,
         vo: string,
-        token: string;
+        EGIToken: string;
         worker: {
             num_instances: number;
             num_cpus: number;
@@ -68,7 +68,7 @@ export module DeploymentLogic {
         authVersion: string,
         domain: string,
         vo: string,
-        token: string;
+        EGIToken: string;
     };
 
     let deployInfo: DeployInfo = {
@@ -86,7 +86,7 @@ export module DeploymentLogic {
         authVersion: '',
         domain: '',
         vo: '',
-        token: '',
+        EGIToken: '',
         worker: {
             num_instances: 1,
             num_cpus: 1,
@@ -197,7 +197,7 @@ export module DeploymentLogic {
                 authVersion: deployInfo.authVersion,
                 domain: deployInfo.domain,
                 vo: deployInfo.vo,
-                token: deployInfo.token
+                EGIToken: deployInfo.EGIToken
             };
 
             const cmdSave = await saveToInfrastructureList(infrastructureData);
@@ -268,7 +268,7 @@ export module DeploymentLogic {
             echo $TOKEN
         `;
         return egiToken;
-    }
+    };
 
     function deployIMCommand(obj: DeployInfo, mergedTemplate: string): string {
         const pipeAuth = `${obj.infName}-auth-pipe`;
@@ -288,14 +288,14 @@ export module DeploymentLogic {
         `;
 
         // Command to create the IM-cli credentials
-        let authContent = `id = im; type = InfrastructureManager; username = user; password = pass;\n`;
+        let authContent = `id = im; type = InfrastructureManager; username = ${obj.IMuser}; password = ${obj.IMpass};\n`;
         authContent += `id = ${obj.id}; type = ${obj.deploymentType}; host = ${obj.host}; username = ${obj.username}; password = ${obj.password};`;
 
         if (obj.deploymentType === 'OpenStack') {
             authContent += ` tenant = ${obj.tenant}; authVersion = ${obj.authVersion},
                 domain = ${obj.domain}`;
         } else if (obj.deploymentType === 'EGI') {
-            authContent += ` vo = ${obj.vo}; token = ${obj.token}`;
+            authContent += ` vo = ${obj.vo}; token = ${obj.EGIToken}`;
         }
 
         cmd += `echo -e "${authContent}" > $PWD/${pipeAuth} &
@@ -330,7 +330,7 @@ export module DeploymentLogic {
 
         console.log("Bash command:", cmd);
         return cmd;
-    }
+    };
 
     async function computeHash(input: string): Promise<string> {
         const msgUint8 = new TextEncoder().encode(input);
@@ -338,6 +338,16 @@ export module DeploymentLogic {
         const hashArray = Array.from(new Uint8Array(hashBuffer));
         const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
         return hashHex;
+    };
+
+    async function generateIMCredentials(): Promise<void> {
+        const randomInput = `${Date.now()}-${Math.random()}`;
+        const hash = await computeHash(randomInput);
+        // Use first 16 characters for user and next 16 characters for password
+        const user = hash.substring(0, 16);
+        const pass = hash.substring(16, 32);
+        deployInfo.IMuser = user;
+        deployInfo.IMpass = pass;
     };
 
     async function mergeTOSCARecipes(
@@ -506,14 +516,14 @@ export module DeploymentLogic {
         `;
 
         // Command to create the IM-cli credentials
-        let authContent = `id = im; type = InfrastructureManager; username = user; password = pass;\n`;
+        let authContent = `id = im; type = InfrastructureManager; username = ${obj.IMuser}; password = ${obj.IMpass};\n`;
         authContent += `id = ${obj.id}; type = ${obj.deploymentType}; host = ${obj.host}; username = ${obj.username}; password = ${obj.password};`;
 
         if (obj.deploymentType === 'OpenStack') {
             authContent += ` tenant = ${obj.tenant}; authVersion = ${obj.authVersion},
                 domain = ${obj.domain}`;
         } else if (obj.deploymentType === 'EGI') {
-            authContent += ` vo = ${obj.vo}; token = ${obj.token}`;
+            authContent += ` vo = ${obj.vo}; token = ${obj.EGIToken}`;
         }
 
         cmd += `echo -e "${authContent}" > $PWD/${pipeAuth} &
@@ -537,6 +547,10 @@ export module DeploymentLogic {
     //****************//
     //*  Deployment  *//
     //****************// 
+ 
+    generateIMCredentials().then(() => {
+        console.log('Generated random IM credentials:', deployInfo.IMuser, deployInfo.IMpass);
+    });
 
     const deployChooseProvider = (dialogBody: HTMLElement): void => {
         deployStep = 0;
@@ -759,7 +773,7 @@ export module DeploymentLogic {
                 case 'EGI':
                     deployInfo.host = getInputValue('site');
                     deployInfo.vo = getInputValue('vo');
-                    deployInfo.token = getEGIToken();
+                    deployInfo.EGIToken = getEGIToken();
                     break;
             }
 

@@ -35,15 +35,16 @@ class Apricot_Magics(Magics):
             raise ValueError(f"Infrastructure with ID {infrastructure_id} does not exist.")
 
         # Construct auth-pipe content based on infrastructure type
-        auth_content = f"type = InfrastructureManager; username = user; password = pass;\n"
+        auth_content = f"type = InfrastructureManager; username = {found_infrastructure['IMuser']}; password = {found_infrastructure['IMpass']};\n"
         # Additional credentials based on infrastructure type
         if found_infrastructure['type'] == "OpenStack":
-            auth_content += f"id = {found_infrastructure['id']}; type = {found_infrastructure['type']}; username = {found_infrastructure['user']}; password = {found_infrastructure['pass']}; host = {found_infrastructure['host']}; tenant = {found_infrastructure['tenant']}"
+            auth_content += f"id = {found_infrastructure['id']}; type = {found_infrastructure['type']}; username = {found_infrastructure['user']}; password = {found_infrastructure['pass']}; host = {found_infrastructure['host']}; tenant = {found_infrastructure['tenant']}; authVersion = {found_infrastructure['authVersion']}; domain = {found_infrastructure['domain']}"
         elif found_infrastructure['type'] == "OpenNebula":
             auth_content += f"id = {found_infrastructure['id']}; type = {found_infrastructure['type']}; username = {found_infrastructure['user']}; password = {found_infrastructure['pass']}; host = {found_infrastructure['host']}"
-        elif found_infrastructure['type'] == "AWS":
-            auth_content += f"id = {found_infrastructure['id']}; type = {found_infrastructure['type']}; username = {found_infrastructure['user']}; password = {found_infrastructure['pass']}; host = {found_infrastructure['host']}"
-
+        elif found_infrastructure['type'] == "EC2":
+            auth_content += f"id = {found_infrastructure['id']}; type = {found_infrastructure['type']}; username = {found_infrastructure['user']}; password = {found_infrastructure['pass']}"
+        elif found_infrastructure['type'] == "EGI":
+            auth_content += f"id = {found_infrastructure['id']}; type = {found_infrastructure['type']}; host = {found_infrastructure['host']}; vo = {found_infrastructure['vo']}; token = {found_infrastructure['EGITokan']}"
         # Write auth-pipe content to a file
         with open('auth-pipe', 'w') as auth_file:
             auth_file.write(auth_content)
