@@ -18,6 +18,8 @@ export module DeploymentLogic {
         infName: string;
         authVersion: string,
         domain: string,
+        vo: string,
+        token: string;
         worker: {
             num_instances: number;
             num_cpus: number;
@@ -61,6 +63,8 @@ export module DeploymentLogic {
         pass: string;
         authVersion: string,
         domain: string,
+        vo: string,
+        token: string;
     };
 
     let deployInfo: DeployInfo = {
@@ -75,6 +79,8 @@ export module DeploymentLogic {
         infName: 'infra-name',
         authVersion: '',
         domain: '',
+        vo: '',
+        token: '',
         worker: {
             num_instances: 1,
             num_cpus: 1,
@@ -181,7 +187,9 @@ export module DeploymentLogic {
                 user: deployInfo.username,
                 pass: deployInfo.password,
                 authVersion: deployInfo.authVersion,
-                domain: deployInfo.domain
+                domain: deployInfo.domain,
+                vo: deployInfo.vo,
+                token: deployInfo.token
             };
 
             const cmdSave = await saveToInfrastructureList(infrastructureData);
@@ -217,7 +225,7 @@ export module DeploymentLogic {
         // Find the first occurrence of '[' and get the substring from there
         const jsonStartIndex = output.indexOf('[');
         if (jsonStartIndex === -1) {
-            console.error('No JSON array found in the output.');
+            console.error('No os images available.');
             return;
         }
     
@@ -270,8 +278,8 @@ export module DeploymentLogic {
         if (obj.deploymentType === 'OpenStack') {
             authContent += ` tenant = ${obj.tenant}; authVersion = ${obj.authVersion},
                 domain = ${obj.domain}`;
-        } else if (obj.deploymentType === 'AWS') {
-            authContent += ` image = ${obj.worker.image};`;
+        } else if (obj.deploymentType === 'EGI') {
+            authContent += ` vo = ${obj.vo}; token = ${obj.token}`;
         }
 
         cmd += `echo -e "${authContent}" > $PWD/${pipeAuth} &
@@ -488,8 +496,8 @@ export module DeploymentLogic {
         if (obj.deploymentType === 'OpenStack') {
             authContent += ` tenant = ${obj.tenant}; authVersion = ${obj.authVersion},
                 domain = ${obj.domain}`;
-        } else if (obj.deploymentType === 'AWS') {
-            authContent += ` image = ${obj.worker.image};`;
+        } else if (obj.deploymentType === 'EGI') {
+            authContent += ` vo = ${obj.vo}; token = ${obj.token}`;
         }
 
         cmd += `echo -e "${authContent}" > $PWD/${pipeAuth} &
@@ -526,7 +534,7 @@ export module DeploymentLogic {
         dialogBody.appendChild(paragraph);
 
         // Create buttons for each provider
-        const providers = ['OpenNebula', 'EC2', 'OpenStack'];
+        const providers = ['OpenNebula', 'EC2', 'OpenStack', 'EGI'];
         providers.forEach(provider => {
             const button = document.createElement('button');
             button.textContent = provider;
@@ -545,6 +553,10 @@ export module DeploymentLogic {
                     case 'OpenStack':
                         deployInfo.id = 'ost';
                         deployInfo.deploymentType = 'OpenStack';
+                        break;
+                    case 'EGI':
+                        deployInfo.id = 'egi';
+                        deployInfo.deploymentType = 'EGI';
                         break;
                     default:
                         console.error('Unsupported provider:', provider);
@@ -676,19 +688,14 @@ export module DeploymentLogic {
 
         switch (deployInfo.deploymentType) {
             case 'EC2':
-                const zone = "us-east-1";
+                const region = "us-east-1";
                 const ami = "ami-0044130ca185d0880";
 
                 text = `<p>Introduce AWS IAM credentials.</p><br>`;
                 addFormInput(form, 'Access Key ID:', 'accessKeyId', deployInfo.username);
                 addFormInput(form, 'Secret Access Key:', 'secretAccessKey', deployInfo.password, 'password');
-                addFormInput(form, 'Availability zone:', 'availabilityZoneIn', zone);
+                addFormInput(form, 'Region:', 'region', region);
                 addFormInput(form, 'AMI:', 'amiIn', ami);
-
-                if (deployInfo.recipe === "Simple-node-disk") {
-                    addFormInput(form, 'Port to be opened in AWS:', 'infrastructurePort', '1', 'number');
-                }
-                break;
 
             case 'OpenNebula':
             case 'OpenStack':
@@ -702,6 +709,13 @@ export module DeploymentLogic {
                     addFormInput(form, 'Auth version:', 'authVersion', deployInfo.authVersion);
                 }
                 break;
+
+            case 'EGI':
+                text = `<p>Introduce EGI credentials.</p><br>`;
+                addFormInput(form, 'Site name:', 'site', deployInfo.host);
+                addFormInput(form, 'VO:', 'vo', deployInfo.vo);
+                addFormInput(form, 'Token:', 'token', deployInfo.token);
+                break;
         }
 
         form.insertAdjacentHTML('afterbegin', text);
@@ -710,11 +724,11 @@ export module DeploymentLogic {
         const nextButton = createButton('Next', () => {
             switch (deployInfo.deploymentType) {
                 case 'EC2':
-                    const AWSzone = getInputValue('availabilityZoneIn');
+                    const region = getInputValue('region');
                     const AMI = getInputValue('amiIn');
-                    const imageURL = "aws://" + AWSzone + "/" + AMI;
+                    const imageURL = "aws://" + region + "/" + AMI;
                     deployInfo.worker.image = imageURL;
-                    //deployInfo.worker.image = `aws://${AWSzone}/${AMI}`;
+                    //deployInfo.worker.image = `aws://${region}/${AMI}`;
 
                     if (deployInfo.recipe === "Simple-node-disk") {
                         deployInfo.port = getInputValue('infrastructurePort');
@@ -728,7 +742,7 @@ export module DeploymentLogic {
                     if (deployInfo.deploymentType === 'OpenStack') {
                         deployInfo.tenant = getInputValue('tenant');
                         deployInfo.domain = getInputValue('domain');
-                        deployInfo.authVersion = getInputValue('authVersionº');
+                        deployInfo.authVersion = getInputValue('authVersion');
                     }
                     break;
             }
@@ -769,6 +783,7 @@ export module DeploymentLogic {
             const content = msg.content as any;
             const outputText = content.text || (content.data && content.data['text/plain']);
             createImagesDropdown(outputText, dialogBody);
+            alert(outputText);
             console.log('Output in deployInfraConfiguration:', outputText);
         };
 
