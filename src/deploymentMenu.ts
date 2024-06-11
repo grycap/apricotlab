@@ -319,7 +319,7 @@ export module DeploymentLogic {
         let authContent = `id = im; type = InfrastructureManager; username = ${obj.IMuser}; password = ${obj.IMpass};\n`;
         authContent += `id = ${obj.id}; type = ${obj.deploymentType}; host = ${obj.host}; `;
 
-        if (obj.deploymentType === 'OpenNebula') {
+        if (obj.deploymentType === 'OpenNebula' || obj.deploymentType === 'EC2') {
             authContent += `username = ${obj.username}; password = ${obj.password}`;
         }
         else if (obj.deploymentType === 'OpenStack') {
@@ -793,6 +793,8 @@ export module DeploymentLogic {
                     const imageURL = "aws://" + region + "/" + AMI;
                     deployInfo.worker.image = imageURL;
                     //deployInfo.worker.image = `aws://${region}/${AMI}`;
+                    deployInfo.username = getInputValue('accessKeyId');
+                    deployInfo.password = getInputValue('secretAccessKey');
                     break;
 
                 case 'OpenNebula':
@@ -839,6 +841,7 @@ export module DeploymentLogic {
         addFormInput(form, 'Size of the root disk of the VM(s):', 'infrastructureDiskSize', '20 GB');
         addFormInput(form, 'Number of GPUs for each VM:', 'infrastructureGPUs', '1', 'number', '1');
 
+        if (deployInfo.deploymentType !== 'EC2') {
         // Create select image command
         const cmdImageNames = selectImage(deployInfo);
 
@@ -852,7 +855,7 @@ export module DeploymentLogic {
             const outputText = content.text || (content.data && content.data['text/plain']);
             await createImagesDropdown(outputText, dialogBody);
         };
-
+        }
 
         const backBtn = createButton('Back', () => deployProviderCredentials(dialogBody));
         const nextBtn = createButton(deployInfo.childs.length === 0 ? "Deploy" : "Next", () => {
