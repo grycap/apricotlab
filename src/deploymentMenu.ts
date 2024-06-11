@@ -217,7 +217,15 @@ export module DeploymentLogic {
                 console.error('Error executing kernel command:', error);
                 deploying = false;
             }
-            dialogBody.innerHTML = '';
+            // Show the success circle
+            dialogBody.innerHTML = `
+                <div class="success-container">
+                <div class="success-circle">
+                <i class="fas fa-check"></i>
+                </div>
+                <p>Infrastructure successfully deployed</p>
+                </div>
+                `;
             deploying = false;
         }
     };
@@ -264,8 +272,6 @@ export module DeploymentLogic {
 
             dialogBody.appendChild(select);
 
-            // Execute alert and console.log statements after dropdown creation
-            alert('Wrong provider credentials. No OS image found.');
             console.log('Output in deployInfraConfiguration:', output);
 
         } catch (error) {
@@ -279,17 +285,17 @@ export module DeploymentLogic {
             echo $TOKEN
         `;
         const kernelManager = new KernelManager();
-    const kernel = await kernelManager.startNew();
-    const future = kernel.requestExecute({ code });
+        const kernel = await kernelManager.startNew();
+        const future = kernel.requestExecute({ code });
 
-    return new Promise((resolve, reject) => {
-        future.onIOPub = async (msg) => {
-            const content = msg.content as any;
-            const outputText = content.text || (content.data && content.data['text/plain']);
-            resolve(outputText.trim()); // Resolve with the token value
-        };
+        return new Promise((resolve, reject) => {
+            future.onIOPub = async (msg) => {
+                const content = msg.content as any;
+                const outputText = content.text || (content.data && content.data['text/plain']);
+                resolve(outputText.trim());
+            };
 
-    });
+        });
     };
 
     function deployIMCommand(obj: DeployInfo, mergedTemplate: string): string {
@@ -771,8 +777,8 @@ export module DeploymentLogic {
 
             case 'EGI':
                 text = `<p>Introduce EGI credentials.</p><br>`;
-                addFormInput(form, 'Site name:', 'site', deployInfo.host);
                 addFormInput(form, 'VO:', 'vo', deployInfo.vo);
+                addFormInput(form, 'Site name:', 'site', deployInfo.host);
                 break;
         }
 
@@ -845,6 +851,7 @@ export module DeploymentLogic {
             const content = msg.content as any;
             const outputText = content.text || (content.data && content.data['text/plain']);
             await createImagesDropdown(outputText, dialogBody);
+        };
 
 
         const backBtn = createButton('Back', () => deployProviderCredentials(dialogBody));
@@ -868,7 +875,6 @@ export module DeploymentLogic {
 
         dialogBody.appendChild(backBtn);
         dialogBody.appendChild(nextBtn);
-    };
     };
 
     const deployChildsConfiguration = async (dialogBody: HTMLElement): Promise<void> => {
@@ -981,7 +987,7 @@ export module DeploymentLogic {
             const cmdDeploy = deployIMCommand(deployInfo, mergedYamlContent);
 
             // Show loading spinner
-            dialogBody.innerHTML = '<div class="loader"></div>';
+            dialogBody.innerHTML = '<div class="loader-container"><div class="loader"></div></div>';
 
             // Execute the deployment command
             const kernelManager = new KernelManager();
