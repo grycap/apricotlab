@@ -24,7 +24,8 @@ const plugin: JupyterFrontEndPlugin<void> = {
 
     // Create the HTML content of the widget
     const node = document.createElement('div');
-    node.textContent = 'APRICOT';
+    node.className = 'apricot-TopArea';
+    node.innerHTML = 'APRICOT <i class="icon"></i>';
 
     // Create the widget
     const widget = new Widget({ node });
@@ -37,8 +38,6 @@ const plugin: JupyterFrontEndPlugin<void> = {
 
     let buttonExtension = new ButtonExtension();
     app.docRegistry.addWidgetExtension('Notebook', buttonExtension);
-
-
 
   }
 };
