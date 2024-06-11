@@ -21,7 +21,7 @@ export module DeploymentLogic {
         authVersion: string,
         domain: string,
         vo: string,
-        EGIToken: string;
+        EGIToken: any;
         worker: {
             num_instances: number;
             num_cpus: number;
@@ -227,47 +227,69 @@ export module DeploymentLogic {
             console.error('Output is empty or undefined.');
             return;
         }
-    
+
         console.log('Original output:', output);
-    
+
+        // Check if the output contains "error" in the message
+        if (output.toLowerCase().includes('error')) {
+            // If "error" is found, trigger an alert with the output
+            alert(output);
+        }
+
         // Find the first occurrence of '[' and get the substring from there
         const jsonStartIndex = output.indexOf('[');
         if (jsonStartIndex === -1) {
             console.error('No os images available.');
             return;
         }
-    
+
         const jsonOutput = output.substring(jsonStartIndex).trim();
         console.log('JSON output:', jsonOutput);
-    
+
         try {
             const images: { uri: string; name: string }[] = JSON.parse(jsonOutput);
             imageOptions = images;
             console.log('Parsed images:', images);
-    
+
             // Create dropdown menu with image options
             const select = document.createElement('select');
             select.id = 'imageDropdown';
-    
+
             imageOptions.forEach(image => {
                 const option = document.createElement('option');
                 option.value = image.uri;
                 option.textContent = image.name;
                 select.appendChild(option);
             });
-    
+
             dialogBody.appendChild(select);
+
+            // Execute alert and console.log statements after dropdown creation
+            alert('Wrong provider credentials. No OS image found.');
+            console.log('Output in deployInfraConfiguration:', output);
+
         } catch (error) {
-            console.error('Error parsing JSON:', error);
+            console.error('Error getting OS images:', error);
         }
     };
-    
-    function getEGIToken() {
-        let egiToken = `%%bash
+
+    const getEGIToken = async () => {
+        const code = `%%bash
             TOKEN=$(cat /var/run/secrets/egi.eu/access_token)
             echo $TOKEN
         `;
-        return egiToken;
+        const kernelManager = new KernelManager();
+    const kernel = await kernelManager.startNew();
+    const future = kernel.requestExecute({ code });
+
+    return new Promise((resolve, reject) => {
+        future.onIOPub = async (msg) => {
+            const content = msg.content as any;
+            const outputText = content.text || (content.data && content.data['text/plain']);
+            resolve(outputText.trim()); // Resolve with the token value
+        };
+
+    });
     };
 
     function deployIMCommand(obj: DeployInfo, mergedTemplate: string): string {
@@ -289,13 +311,16 @@ export module DeploymentLogic {
 
         // Command to create the IM-cli credentials
         let authContent = `id = im; type = InfrastructureManager; username = ${obj.IMuser}; password = ${obj.IMpass};\n`;
-        authContent += `id = ${obj.id}; type = ${obj.deploymentType}; host = ${obj.host}; username = ${obj.username}; password = ${obj.password};`;
+        authContent += `id = ${obj.id}; type = ${obj.deploymentType}; host = ${obj.host}; `;
 
-        if (obj.deploymentType === 'OpenStack') {
-            authContent += ` tenant = ${obj.tenant}; auth_version = ${obj.authVersion},
+        if (obj.deploymentType === 'OpenNebula') {
+            authContent += `username = ${obj.username}; password = ${obj.password}`;
+        }
+        else if (obj.deploymentType === 'OpenStack') {
+            authContent += `username = ${obj.username}; password = ${obj.password}; tenant = ${obj.tenant}; auth_version = ${obj.authVersion};
                 domain = ${obj.domain}`;
         } else if (obj.deploymentType === 'EGI') {
-            authContent += ` vo = ${obj.vo}; token = ${obj.EGIToken}`;
+            authContent += `vo = ${obj.vo}; token = ${obj.EGIToken}`;
         }
 
         cmd += `echo -e "${authContent}" > $PWD/${pipeAuth} &
@@ -517,10 +542,13 @@ export module DeploymentLogic {
 
         // Command to create the IM-cli credentials
         let authContent = `id = im; type = InfrastructureManager; username = ${obj.IMuser}; password = ${obj.IMpass};\n`;
-        authContent += `id = ${obj.id}; type = ${obj.deploymentType}; host = ${obj.host}; username = ${obj.username}; password = ${obj.password};`;
+        authContent += `id = ${obj.id}; type = ${obj.deploymentType}; host = ${obj.host};`;
 
-        if (obj.deploymentType === 'OpenStack') {
-            authContent += ` tenant = ${obj.tenant}; auth_version = ${obj.authVersion},
+        if (obj.deploymentType === 'OpenNebula') {
+            authContent += ` username = ${obj.username}; password = ${obj.password};`;
+        }
+        else if (obj.deploymentType === 'OpenStack') {
+            authContent += `username = ${obj.username}; password = ${obj.password}; tenant = ${obj.tenant}; auth_version = ${obj.authVersion};
                 domain = ${obj.domain}`;
         } else if (obj.deploymentType === 'EGI') {
             authContent += ` vo = ${obj.vo}; token = ${obj.EGIToken}`;
@@ -547,7 +575,7 @@ export module DeploymentLogic {
     //****************//
     //*  Deployment  *//
     //****************// 
- 
+
     generateIMCredentials().then(() => {
         console.log('Generated random IM credentials:', deployInfo.IMuser, deployInfo.IMpass);
     });
@@ -707,7 +735,7 @@ export module DeploymentLogic {
         dialogBody.appendChild(nextButton);
     };
 
-    const deployProviderCredentials = (dialogBody: HTMLElement): void => {
+    const deployProviderCredentials = async (dialogBody: HTMLElement): Promise<void> => {
         deployStep = 3;
 
         dialogBody.innerHTML = '';
@@ -726,6 +754,7 @@ export module DeploymentLogic {
                 addFormInput(form, 'Secret Access Key:', 'secretAccessKey', deployInfo.password, 'password');
                 addFormInput(form, 'Region:', 'region', region);
                 addFormInput(form, 'AMI:', 'amiIn', ami);
+                break;
 
             case 'OpenNebula':
             case 'OpenStack':
@@ -750,7 +779,7 @@ export module DeploymentLogic {
         form.insertAdjacentHTML('afterbegin', text);
 
         const backBtn = createButton('Back', () => deployRecipeType(dialogBody));
-        const nextButton = createButton('Next', () => {
+        const nextButton = createButton('Next', async () => {
             switch (deployInfo.deploymentType) {
                 case 'EC2':
                     const region = getInputValue('region');
@@ -758,6 +787,7 @@ export module DeploymentLogic {
                     const imageURL = "aws://" + region + "/" + AMI;
                     deployInfo.worker.image = imageURL;
                     //deployInfo.worker.image = `aws://${region}/${AMI}`;
+                    break;
 
                 case 'OpenNebula':
                 case 'OpenStack':
@@ -770,10 +800,12 @@ export module DeploymentLogic {
                         deployInfo.authVersion = getInputValue('authVersion');
                     }
                     break;
+
                 case 'EGI':
                     deployInfo.host = getInputValue('site');
                     deployInfo.vo = getInputValue('vo');
-                    deployInfo.EGIToken = getEGIToken();
+                    deployInfo.EGIToken = await getEGIToken();
+                    console.log('EGI Token:', deployInfo.EGIToken);
                     break;
             }
 
@@ -809,28 +841,23 @@ export module DeploymentLogic {
         const kernel = await kernelManager.startNew();
         const future = kernel.requestExecute({ code: cmdImageNames });
 
-        future.onIOPub = (msg) => {
+        future.onIOPub = async (msg) => {
             const content = msg.content as any;
             const outputText = content.text || (content.data && content.data['text/plain']);
-            createImagesDropdown(outputText, dialogBody);
-            alert('Wrong provider credentials. No OS image found.');
-            console.log('Output in deployInfraConfiguration:', outputText);
-        };
+            await createImagesDropdown(outputText, dialogBody);
+
 
         const backBtn = createButton('Back', () => deployProviderCredentials(dialogBody));
         const nextBtn = createButton(deployInfo.childs.length === 0 ? "Deploy" : "Next", () => {
+            const selectedImageUri = (document.getElementById('imageDropdown') as HTMLSelectElement).value;
+
             deployInfo.infName = getInputValue('infrastructureName');
             deployInfo.worker.num_instances = parseInt(getInputValue('infrastructureWorkers'));
             deployInfo.worker.num_cpus = parseInt(getInputValue('infrastructureCPUs'));
             deployInfo.worker.mem_size = getInputValue('infrastructureMem');
             deployInfo.worker.disk_size = getInputValue('infrastructureDiskSize');
             deployInfo.worker.num_gpus = parseInt(getInputValue('infrastructureGPUs'));
-            // Get selected image from the dropdown
-            const selectedImageUri = (document.getElementById('imageDropdown') as HTMLSelectElement).value;
-            console.log('selectedImageUri', selectedImageUri);
             deployInfo.worker.image = selectedImageUri;
-
-            console.log('deployinfo childs', deployInfo.childs);
 
             if (deployInfo.childs.length === 0) {
                 deployFinalRecipe(dialogBody);
@@ -841,6 +868,7 @@ export module DeploymentLogic {
 
         dialogBody.appendChild(backBtn);
         dialogBody.appendChild(nextBtn);
+    };
     };
 
     const deployChildsConfiguration = async (dialogBody: HTMLElement): Promise<void> => {
