@@ -4,6 +4,7 @@ import { DocumentRegistry } from '@jupyterlab/docregistry';
 import { IDisposable } from '@lumino/disposable';
 import { DeploymentLogic } from './deploymentMenu';
 import { ListDeploymentsLogic } from './listDeployments';
+import { treeViewIcon, listIcon, } from '@jupyterlab/ui-components'; // kernelIcon
 
 export class ButtonExtension implements DocumentRegistry.IWidgetExtension<NotebookPanel, INotebookModel> {
 
@@ -11,12 +12,14 @@ export class ButtonExtension implements DocumentRegistry.IWidgetExtension<Notebo
         // Create the toolbar buttons
         const DeploymentButton = new ToolbarButton({
             label: 'Deployment Menu',
-            onClick: () => DeploymentLogic.openDeploymentDialog()
+            onClick: () => DeploymentLogic.openDeploymentDialog(),
+            icon: treeViewIcon // kernelIcon
         });
 
         const ListDeploymentsButton = new ToolbarButton({
             label: 'Deployments list',
-            onClick: () => ListDeploymentsLogic.openListDeploymentsDialog()
+            onClick: () => ListDeploymentsLogic.openListDeploymentsDialog(),
+            icon: listIcon
         });
 
         // Insert buttons into the toolbar
