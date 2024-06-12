@@ -11,13 +11,13 @@ export class ButtonExtension implements DocumentRegistry.IWidgetExtension<Notebo
     createNew(panel: NotebookPanel, context: DocumentRegistry.IContext<INotebookModel>): IDisposable {
         // Create the toolbar buttons
         const DeploymentButton = new ToolbarButton({
-            label: 'Deployment Menu',
+            label: ' Deployment menu',
             onClick: () => DeploymentLogic.openDeploymentDialog(),
             icon: treeViewIcon // kernelIcon
         });
 
         const ListDeploymentsButton = new ToolbarButton({
-            label: 'Deployments list',
+            label: ' Deployments list',
             onClick: () => ListDeploymentsLogic.openListDeploymentsDialog(),
             icon: listIcon
         });

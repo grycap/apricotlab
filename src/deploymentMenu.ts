@@ -168,66 +168,39 @@ export module DeploymentLogic {
         return input.value;
     };
 
-    async function handleFinalDeployOutput(output: string | undefined, dialogBody: HTMLElement) {
-        if (!output) return;
+    async function executeKernelCommand(command: string, callback: (output: string) => void): Promise<void> {
+        try {
+            const kernelManager = new KernelManager();
+            const kernel = await kernelManager.startNew();
+            const future = kernel.requestExecute({ code: command });
 
-        if (output.toLowerCase().includes('error')) {
-            alert(output);
-            deploying = false;
-            deployInfo.childs.length === 0 ? deployInfraConfiguration(dialogBody) : deployChildsConfiguration(dialogBody);
-        } else {
-            alert(output);
-
-            // Extract infrastructure ID
-            const idMatch = output.match(/ID: ([\w-]+)/);
-            const infrastructureID = idMatch ? idMatch[1] : '';
-
-            // Create a JSON object for infrastructure data
-            const infrastructureData: InfrastructureData = {
-                IMuser: deployInfo.IMuser,
-                IMpass: deployInfo.IMpass,
-                name: deployInfo.infName,
-                infrastructureID,
-                id: deployInfo.id,
-                type: deployInfo.deploymentType,
-                host: deployInfo.host,
-                tenant: deployInfo.tenant,
-                user: deployInfo.username,
-                pass: deployInfo.password,
-                authVersion: deployInfo.authVersion,
-                domain: deployInfo.domain,
-                vo: deployInfo.vo,
-                EGIToken: deployInfo.EGIToken
+            future.onIOPub = (msg) => {
+                const content = msg.content as any;
+                const outputText = content.text || (content.data && content.data['text/plain']);
+                callback(outputText);
             };
-
-            const cmdSave = await saveToInfrastructureList(infrastructureData);
-
-            // Execute kernel command to save data
-            try {
-                const kernelManager = new KernelManager();
-                const kernel = await kernelManager.startNew();
-                const future = kernel.requestExecute({ code: cmdSave });
-
-                future.onIOPub = (msg) => {
-                    const content = msg.content as any;
-                    const outputText = content.text || (content.data && content.data['text/plain']);
-                    handleFinalDeployOutput(outputText, dialogBody);
-                };
-            } catch (error) {
-                console.error('Error executing kernel command:', error);
-                deploying = false;
-            }
-            // Show the success circle
-            dialogBody.innerHTML = `
-                <div class="success-container">
-                <div class="success-circle">
-                <i class="fas fa-check"></i>
-                </div>
-                <p>Infrastructure successfully deployed</p>
-                </div>
-                `;
+        } catch (error) {
+            console.error('Error executing kernel command:', error);
             deploying = false;
         }
+    };
+
+    async function computeHash(input: string): Promise<string> {
+        const msgUint8 = new TextEncoder().encode(input);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        return hashHex;
+    };
+
+    async function generateIMCredentials(): Promise<void> {
+        const randomInput = `${Date.now()}-${Math.random()}`;
+        const hash = await computeHash(randomInput);
+        // Use first 16 characters for user and next 16 characters for password
+        const user = hash.substring(0, 16);
+        const pass = hash.substring(16, 32);
+        deployInfo.IMuser = user;
+        deployInfo.IMpass = pass;
     };
 
     async function createImagesDropdown(output: string | undefined, dialogBody: HTMLElement) {
@@ -277,108 +250,6 @@ export module DeploymentLogic {
         } catch (error) {
             console.error('Error getting OS images:', error);
         }
-    };
-
-    const getEGIToken = async () => {
-        const code = `%%bash
-            TOKEN=$(cat /var/run/secrets/egi.eu/access_token)
-            echo $TOKEN
-        `;
-        const kernelManager = new KernelManager();
-        const kernel = await kernelManager.startNew();
-        const future = kernel.requestExecute({ code });
-
-        return new Promise((resolve, reject) => {
-            future.onIOPub = async (msg) => {
-                const content = msg.content as any;
-                const outputText = content.text || (content.data && content.data['text/plain']);
-                resolve(outputText.trim());
-            };
-
-        });
-    };
-
-    function deployIMCommand(obj: DeployInfo, mergedTemplate: string): string {
-        const pipeAuth = `${obj.infName}-auth-pipe`;
-        const imageRADL = obj.infName;
-        const templatePath = `~/.imclient/templates/${imageRADL}.yaml`;
-
-        let cmd = `%%bash
-            PWD=$(pwd)
-            # Remove pipes if they exist
-            rm -f $PWD/${pipeAuth} &> /dev/null
-            # Create directory for templates
-            mkdir -p $PWD/templates &> /dev/null
-            # Create pipes
-            mkfifo $PWD/${pipeAuth}
-            # Save mergedTemplate as a YAML file
-            echo '${mergedTemplate}' > ${templatePath}
-        `;
-
-        // Command to create the IM-cli credentials
-        let authContent = `id = im; type = InfrastructureManager; username = ${obj.IMuser}; password = ${obj.IMpass};\n`;
-        authContent += `id = ${obj.id}; type = ${obj.deploymentType}; host = ${obj.host}; `;
-
-        if (obj.deploymentType === 'OpenNebula' || obj.deploymentType === 'EC2') {
-            authContent += `username = ${obj.username}; password = ${obj.password}`;
-        }
-        else if (obj.deploymentType === 'OpenStack') {
-            authContent += `username = ${obj.username}; password = ${obj.password}; tenant = ${obj.tenant}; auth_version = ${obj.authVersion};
-                domain = ${obj.domain}`;
-        } else if (obj.deploymentType === 'EGI') {
-            authContent += `vo = ${obj.vo}; token = ${obj.EGIToken}`;
-        }
-
-        cmd += `echo -e "${authContent}" > $PWD/${pipeAuth} &
-            # Create final command where the output is stored in "imageOut"
-            imageOut=$(python3 /usr/local/bin/im_client.py -a $PWD/${pipeAuth} create ${templatePath} -r https://im.egi.eu/im)
-            # Remove pipe
-            rm -f $PWD/${pipeAuth} &> /dev/null
-            # Print IM output on stderr or stdout
-            if [ $? -ne 0 ]; then
-                >&2 echo -e $imageOut
-                exit 1
-            else
-                echo -e $imageOut
-            fi
-            `;
-
-        console.log("cmd", cmd);
-        return cmd;
-    };
-
-    async function saveToInfrastructureList(obj: InfrastructureData) {
-        const filePath = `$PWD/infrastructuresList.json`;
-
-        // Construct the bash command
-        const cmd = `
-            %%bash
-            PWD=$(pwd)
-            existingJson=$(cat ${filePath})
-            newJson=$(echo "$existingJson" | jq -c '.infrastructures += [${JSON.stringify(obj)}]')
-            echo "$newJson" > ${filePath}
-        `;
-
-        console.log("Bash command:", cmd);
-        return cmd;
-    };
-
-    async function computeHash(input: string): Promise<string> {
-        const msgUint8 = new TextEncoder().encode(input);
-        const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-        return hashHex;
-    };
-
-    async function generateIMCredentials(): Promise<void> {
-        const randomInput = `${Date.now()}-${Math.random()}`;
-        const hash = await computeHash(randomInput);
-        // Use first 16 characters for user and next 16 characters for password
-        const user = hash.substring(0, 16);
-        const pass = hash.substring(16, 32);
-        deployInfo.IMuser = user;
-        deployInfo.IMpass = pass;
     };
 
     async function mergeTOSCARecipes(
@@ -533,6 +404,10 @@ export module DeploymentLogic {
         };
     };
 
+    //*********************//
+    //*   Bash commands   *//
+    //*********************// 
+
     function selectImage(obj: DeployInfo): string {
         const pipeAuth = `${obj.infName}-auth-pipe`;
 
@@ -575,6 +450,90 @@ export module DeploymentLogic {
             `;
 
         console.log("cmd", cmd);
+        return cmd;
+    };
+
+    const getEGIToken = async () => {
+        const code = `%%bash
+            TOKEN=$(cat /var/run/secrets/egi.eu/access_token)
+            echo $TOKEN
+        `;
+        const kernelManager = new KernelManager();
+        const kernel = await kernelManager.startNew();
+        const future = kernel.requestExecute({ code });
+
+        return new Promise((resolve, reject) => {
+            future.onIOPub = async (msg) => {
+                const content = msg.content as any;
+                const outputText = content.text || (content.data && content.data['text/plain']);
+                resolve(outputText.trim());
+            };
+
+        });
+    };
+
+    function deployIMCommand(obj: DeployInfo, mergedTemplate: string): string {
+        const pipeAuth = `${obj.infName}-auth-pipe`;
+        const imageRADL = obj.infName;
+        const templatePath = `~/.imclient/templates/${imageRADL}.yaml`;
+
+        let cmd = `%%bash
+            PWD=$(pwd)
+            # Remove pipes if they exist
+            rm -f $PWD/${pipeAuth} &> /dev/null
+            # Create directory for templates
+            mkdir -p $PWD/templates &> /dev/null
+            # Create pipes
+            mkfifo $PWD/${pipeAuth}
+            # Save mergedTemplate as a YAML file
+            echo '${mergedTemplate}' > ${templatePath}
+        `;
+
+        // Command to create the IM-cli credentials
+        let authContent = `id = im; type = InfrastructureManager; username = ${obj.IMuser}; password = ${obj.IMpass};\n`;
+        authContent += `id = ${obj.id}; type = ${obj.deploymentType}; host = ${obj.host}; `;
+
+        if (obj.deploymentType === 'OpenNebula' || obj.deploymentType === 'EC2') {
+            authContent += `username = ${obj.username}; password = ${obj.password}`;
+        }
+        else if (obj.deploymentType === 'OpenStack') {
+            authContent += `username = ${obj.username}; password = ${obj.password}; tenant = ${obj.tenant}; auth_version = ${obj.authVersion};
+                domain = ${obj.domain}`;
+        } else if (obj.deploymentType === 'EGI') {
+            authContent += `vo = ${obj.vo}; token = ${obj.EGIToken}`;
+        }
+
+        cmd += `echo -e "${authContent}" > $PWD/${pipeAuth} &
+            # Create final command where the output is stored in "imageOut"
+            imageOut=$(python3 /usr/local/bin/im_client.py -a $PWD/${pipeAuth} create ${templatePath} -r https://im.egi.eu/im)
+            # Remove pipe
+            rm -f $PWD/${pipeAuth} &> /dev/null
+            # Print IM output on stderr or stdout
+            if [ $? -ne 0 ]; then
+                >&2 echo -e $imageOut
+                exit 1
+            else
+                echo -e $imageOut
+            fi
+            `;
+
+        console.log("cmd", cmd);
+        return cmd;
+    };
+
+    async function saveToInfrastructureList(obj: InfrastructureData) {
+        const filePath = `$PWD/infrastructuresList.json`;
+
+        // Construct the bash command
+        const cmd = `
+            %%bash
+            PWD=$(pwd)
+            existingJson=$(cat ${filePath})
+            newJson=$(echo "$existingJson" | jq -c '.infrastructures += [${JSON.stringify(obj)}]')
+            echo "$newJson" > ${filePath}
+        `;
+
+        console.log("Bash command:", cmd);
         return cmd;
     };
 
@@ -845,17 +804,16 @@ export module DeploymentLogic {
         // Create select image command
         const cmdImageNames = selectImage(deployInfo);
 
-        // Execute the deployment command
-        const kernelManager = new KernelManager();
-        const kernel = await kernelManager.startNew();
-        const future = kernel.requestExecute({ code: cmdImageNames });
-
-        future.onIOPub = async (msg) => {
-            const content = msg.content as any;
-            const outputText = content.text || (content.data && content.data['text/plain']);
-            await createImagesDropdown(outputText, dialogBody);
-        };
+        try {
+            // Execute the deployment command
+            await executeKernelCommand(cmdImageNames, async (outputText) => {
+                await createImagesDropdown(outputText, dialogBody);
+            });
+        } catch (error) {
+            console.error('Error executing deployment command:', error);
+            alert('No os images found. Bad credentials.');
         }
+    }
 
         const backBtn = createButton('Back', () => deployProviderCredentials(dialogBody));
         const nextBtn = createButton(deployInfo.childs.length === 0 ? "Deploy" : "Next", () => {
@@ -992,22 +950,69 @@ export module DeploymentLogic {
             // Show loading spinner
             dialogBody.innerHTML = '<div class="loader-container"><div class="loader"></div></div>';
 
-            // Execute the deployment command
-            const kernelManager = new KernelManager();
-            const kernel = await kernelManager.startNew();
-            const future = kernel.requestExecute({ code: cmdDeploy });
-
-            future.onIOPub = (msg) => {
-                const content = msg.content as any;
-                const outputText = content.text || (content.data && content.data['text/plain']);
-                handleFinalDeployOutput(outputText, dialogBody);
-            };
+            await executeKernelCommand(cmdDeploy, (outputText) => handleFinalDeployOutput(outputText, dialogBody));
         } catch (error) {
             console.error('Error during deployment:', error);
             deploying = false;
         }
     };
 
+    const handleFinalDeployOutput = async (output: string | undefined, dialogBody: HTMLElement): Promise<void> => {
+        if (!output) return;
+
+        if (output.toLowerCase().includes('error')) {
+            alert(output);
+            deploying = false;
+            deployInfo.childs.length === 0 ? deployInfraConfiguration(dialogBody) : deployChildsConfiguration(dialogBody);
+        } else {
+            alert(output);
+
+            // Extract infrastructure ID
+            const idMatch = output.match(/ID: ([\w-]+)/);
+            const infrastructureID = idMatch ? idMatch[1] : '';
+
+            // Create a JSON object for infrastructure data
+            const infrastructureData: InfrastructureData = {
+                IMuser: deployInfo.IMuser,
+                IMpass: deployInfo.IMpass,
+                name: deployInfo.infName,
+                infrastructureID,
+                id: deployInfo.id,
+                type: deployInfo.deploymentType,
+                host: deployInfo.host,
+                tenant: deployInfo.tenant,
+                user: deployInfo.username,
+                pass: deployInfo.password,
+                authVersion: deployInfo.authVersion,
+                domain: deployInfo.domain,
+                vo: deployInfo.vo,
+                EGIToken: deployInfo.EGIToken
+            };
+
+            const cmdSave = await saveToInfrastructureList(infrastructureData);
+
+            // Execute kernel command to save data
+            try {
+                // Execute kernel command to save data
+                await executeKernelCommand(cmdSave, (outputText) => {
+                    console.log('Data saved:', outputText);
+                });
+            } catch (error) {
+                console.error('Error executing kernel command:', error);
+                deploying = false;
+            }
+            // Show the success circle
+            dialogBody.innerHTML = `
+                <div class="success-container">
+                <div class="success-circle">
+                <i class="fas fa-check"></i>
+                </div>
+                <p>Infrastructure successfully deployed</p>
+                </div>
+                `;
+            deploying = false;
+        }
+    };
 }
 
 
