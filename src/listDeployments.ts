@@ -5,16 +5,19 @@ import { Widget } from '@lumino/widgets';
 export module ListDeploymentsLogic {
 
     interface Infrastructure {
+        IMuser: string;
+        IMpass: string;
         name: string;
         infrastructureID: string;
         id: string;
         type: string;
         host: string;
         tenant: string;
-        user: string;
-        pass: string;
-        domain?: string;
+        user?: string;
+        pass?: string;
         auth_version?: string;
+        vo?: string;
+        EGIToken?: string;
     }
 
     export async function openListDeploymentsDialog(): Promise<void> {
@@ -112,11 +115,12 @@ export module ListDeploymentsLogic {
                 const cmdState = infrastructureState(infrastructure);
                 // Execute kernel to get output
                 const futureState = kernel.requestExecute({ code: cmdState });
-            
+
                 // Initialize stateCell text content as 'Loading...'
                 stateCell.textContent = 'Loading...';
-            
+
                 futureState.onIOPub = (msg) => {
+                    console.log('state', msg);
                     const content = msg.content as any; // Cast content to any type
                     const outputState = content.text || (content.data && content.data['text/plain']);
                     // Ensure outputState is not undefined before updating stateCell text content
@@ -132,23 +136,23 @@ export module ListDeploymentsLogic {
                         }
                     }
                 };
-            
+
                 await futureState.done; // Wait for state request to complete
             } catch (error) {
                 console.error(`Error fetching state for infrastructure ${infrastructure.infrastructureID}:`, error);
                 stateCell.textContent = 'Error';
             }
-            
 
             try {
-                const cmdIP = infrastructureIP(infrastructure.infrastructureID);
+                const cmdIP = infrastructureIP(infrastructure);
                 // Execute kernel to get output
                 const futureIP = kernel.requestExecute({ code: cmdIP });
-            
+
                 // Initialize ipCell text content as 'Loading...'
                 ipCell.textContent = 'Loading...';
-            
+
                 futureIP.onIOPub = (msg) => {
+                    console.log('ip', msg);
                     const content = msg.content as any; // Cast content to any type
                     const outputIP = content.text || (content.data && content.data['text/plain']);
                     // Ensure outputIP is not undefined before updating ipCell text content
@@ -159,13 +163,12 @@ export module ListDeploymentsLogic {
                         ipCell.textContent = ip ? ip : 'Error';
                     }
                 };
-            
+
                 await futureIP.done; // Wait for IP request to complete
             } catch (error) {
                 console.error(`Error fetching IP for infrastructure ${infrastructure.infrastructureID}:`, error);
                 ipCell.textContent = 'Error';
             }
-
 
         }));
 
@@ -174,50 +177,29 @@ export module ListDeploymentsLogic {
     };
 
     function infrastructureState(infrastructure: Infrastructure): string {
-        const { infrastructureID, id, type, host, user, pass, tenant = '', domain = '', auth_version = '' } = infrastructure;
+        const { IMuser, IMpass, infrastructureID, id, type, host, user = '', pass = '', tenant = '', auth_version = '', vo = '', EGIToken = '' } = infrastructure;
         const pipeAuth = "auth-pipe";
-    
-        const commonAuthDetails = `
-            id = im;
-            type = InfrastructureManager;
-            username = ${user};
-            password = ${pass};`;
-    
-        const typeSpecificDetails = (() => {
-            switch (type) {
-                case "OpenStack":
-                    return `
-                        id = ${id};
-                        type = ${type};
-                        host = ${host};
-                        username = ${user};
-                        password = ${pass};
-                        tenant = ${tenant};
-                        domain = ${domain};
-                        ${auth_version ? `auth_version = ${auth_version};` : ''}
-                    `;
-                case "OpenNebula":
-                    return `
-                        id = ${id};
-                        type = ${type};
-                        host = ${host};
-                        username = ${user};
-                        password = ${pass};
-                    `;
-                case "AWS":
-                    return `
-                        id = ${id};
-                        type = ${type};
-                        host = ${host};
-                        username = ${user};
-                        password = ${pass};
-                        domain = ${domain};
-                    `;
-                default:
-                    return '';
-            }
-        })();
-    
+
+        let authContent = `id=im; type=InfrastructureManager; username=${IMuser}; password=${IMpass};\n`;
+        authContent += `id=${id}; type=${type}; host=${host};`;
+
+        switch (type) {
+            case "OpenStack":
+                authContent += ` username=${user}; password=${pass}; tenant=${tenant}; ${auth_version ? `auth_version=${auth_version};` : ''}`;
+                break;
+            case "OpenNebula":
+                authContent += ` username=${user}; password=${pass};`;
+                break;
+            case "EC2":
+                authContent += ` username=${user}; password=${pass};`;
+                break;
+            case "EGI":
+                authContent += ` vo=${vo}; token=${EGIToken};`;
+                break;
+            default:
+                authContent += '';
+        }
+
         const cmd = `%%bash
             PWD=$(pwd)
             # Remove pipes if they exist
@@ -225,9 +207,8 @@ export module ListDeploymentsLogic {
             # Create pipes
             mkfifo $PWD/${pipeAuth}
             # Command to create the infrastructure manager client credentials
-            echo -e "${commonAuthDetails}
-            ${typeSpecificDetails}" > $PWD/${pipeAuth} &
-    
+            echo -e "${authContent}" > $PWD/${pipeAuth} &
+
             stateOut=$(python3 /usr/local/bin/im_client.py getstate ${infrastructureID} -r https://im.egi.eu/im -a $PWD/${pipeAuth})
             # Remove pipe
             rm -f $PWD/${pipeAuth} &> /dev/null
@@ -238,13 +219,35 @@ export module ListDeploymentsLogic {
             else
                 echo -e $stateOut
             fi
-        `;
+            `;
+
         console.log('cmdState', cmd);
         return cmd;
     };
 
-    function infrastructureIP(infrastructureID: string): string {
+    function infrastructureIP(infrastructure: Infrastructure): string {
+        const { IMuser, IMpass, infrastructureID, id, type, host, user = '', pass = '', tenant = '', auth_version = '', vo = '', EGIToken = '' } = infrastructure;
         const pipeAuth = "auth-pipe";
+
+        let authContent = `id=im; type=InfrastructureManager; username=${IMuser}; password=${IMpass};\n`;
+        authContent += `id=${id}; type=${type}; host=${host};`;
+
+        switch (type) {
+            case "OpenStack":
+                authContent += ` username=${user}; password=${pass}; tenant=${tenant}; ${auth_version ? `auth_version=${auth_version};` : ''}`;
+                break;
+            case "OpenNebula":
+                authContent += ` username=${user}; password=${pass};`;
+                break;
+            case "EC2":
+                authContent += ` username=${user}; password=${pass};`;
+                break;
+            case "EGI":
+                authContent += ` vo=${vo}; token=${EGIToken};`;
+                break;
+            default:
+                authContent += '';
+        }
 
         const cmd = `%%bash
             PWD=$(pwd)
@@ -253,20 +256,21 @@ export module ListDeploymentsLogic {
             # Create pipes
             mkfifo $PWD/${pipeAuth}
             # Command to create the infrastructure manager client credentials
-            echo -e "id = im; type = InfrastructureManager; username = user; password = pass;" > $PWD/${pipeAuth} &
+            echo -e "${authContent}" > $PWD/${pipeAuth} &
 
-            ipOut=$(python3 /usr/local/bin/im_client.py getvminfo ${infrastructureID} 0 net_interface.1.ip -r https://im.egi.eu/im -a $PWD/${pipeAuth})
+            stateOut=$(python3 /usr/local/bin/im_client.py getvminfo ${infrastructureID} 0 net_interface.1.ip -r https://im.egi.eu/im -a $PWD/${pipeAuth})
             # Remove pipe
             rm -f $PWD/${pipeAuth} &> /dev/null
-            # Print IP output on stderr or stdout
+            # Print state output on stderr or stdout
             if [ $? -ne 0 ]; then
-                >&2 echo -e $ipOut
+                >&2 echo -e $stateOut
                 exit 1
             else
-                echo -e $ipOut
+                echo -e $stateOut
             fi
-        `;
-        console.log('cmdIP', cmd);
+            `;
+
+        console.log('cmdState', cmd);
         return cmd;
     };
 
