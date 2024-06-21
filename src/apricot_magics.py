@@ -1,10 +1,3 @@
-"""
-Module for use with Jupyter Notebooks to facilitate APRICOT development.
-Usage:
-   > # To load it
-   > %load_ext apricot_magics
-"""
-
 from tabulate import tabulate
 from IPython.core.magic import Magics, line_magic, line_cell_magic, magics_class
 from subprocess import run, PIPE, CalledProcessError
@@ -340,8 +333,9 @@ class Apricot_Magics(Magics):
 
         cmd_scp = [
             'scp',
-            '-i',
-            'key.pem',
+            '-i', 'key.pem',
+            '-o', 'StrictHostKeyChecking=no',
+            '-o', 'UserKnownHostsFile=/dev/null',
         ]
 
         # Add each file to the scp command
@@ -396,8 +390,9 @@ class Apricot_Magics(Magics):
 
         cmd_scp = [
             'scp',
-            '-i',
-            'key.pem',
+            '-i', 'key.pem',
+            '-o', 'StrictHostKeyChecking=no',
+            '-o', 'UserKnownHostsFile=/dev/null',
         ]
 
         # Add each remote file to the scp command
@@ -521,7 +516,8 @@ class Apricot_Magics(Magics):
 
                     # Clear the message
                     print("\r" + " " * len("Destroying...\nPlease wait, this may take a few seconds."), end='', flush=True)
-
+                    print("\r", end='', flush=True)
+                    
                     if log:
                         print(log)
                     if std_err:
