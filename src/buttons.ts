@@ -2,8 +2,8 @@ import { ToolbarButton } from '@jupyterlab/apputils';
 import { NotebookPanel, INotebookModel } from '@jupyterlab/notebook';
 import { DocumentRegistry } from '@jupyterlab/docregistry';
 import { IDisposable } from '@lumino/disposable';
-import { DeploymentLogic } from './deploymentMenu';
-import { ListDeploymentsLogic } from './listDeployments';
+import { openDeploymentDialog  } from './deploymentMenu';
+import { openListDeploymentsDialog  } from './listDeployments';
 import { treeViewIcon, listIcon } from '@jupyterlab/ui-components'; // kernelIcon
 
 export class ButtonExtension
@@ -16,13 +16,13 @@ export class ButtonExtension
     // Create the toolbar buttons
     const DeploymentButton = new ToolbarButton({
       label: ' Deployment menu',
-      onClick: () => DeploymentLogic.openDeploymentDialog(),
+      onClick: () => openDeploymentDialog(),
       icon: treeViewIcon // kernelIcon
     });
 
     const ListDeploymentsButton = new ToolbarButton({
       label: ' Deployments list',
-      onClick: () => ListDeploymentsLogic.openListDeploymentsDialog(),
+      onClick: () => openListDeploymentsDialog(),
       icon: listIcon
     });
 
