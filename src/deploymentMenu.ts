@@ -77,10 +77,10 @@ export module DeploymentLogic {
         recipe: '',
         id: '',
         deploymentType: '',
-        host: 'ramses.i3m.upv.es:2633',
+        host: '',
         tenant: '',
-        username: 'asanchez',
-        password: 'RamsesOpenNebula9',
+        username: '',
+        password: '',
         port: '',
         infName: 'infra-name',
         authVersion: '',
@@ -811,7 +811,7 @@ export module DeploymentLogic {
             });
         } catch (error) {
             console.error('Error executing deployment command:', error);
-            alert('No os images found. Bad credentials.');
+            alert('No OS images found. Bad credentials.');
         }
     }
 

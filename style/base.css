@@ -115,3 +115,25 @@
   background-color: #dd9f48;
   color: white;
 }
+
+.dialog-button {
+  background-color: #007bff;
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  margin-right: 8px;
+  cursor: pointer;
+}
+
+.dialog-button:hover {
+  background-color: #0056b3;
+}
+
+.dialog-button:active {
+  background-color: #004085;
+}
+
+.dialog-button:last-child {
+  margin-right: 0;
+}
