@@ -470,7 +470,7 @@ class Apricot_Magics(Magics):
                     else:
                         print(f"Status: fail {result.returncode}\n")
                         print(result.stderr + "\n")
-                        return "Fails"
+                        return "Fail"
                 except CalledProcessError as e:
                     print(f"Error: {e}")
                     return "Fail"
