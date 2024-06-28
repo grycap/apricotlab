@@ -2,8 +2,8 @@ import { ToolbarButton } from '@jupyterlab/apputils';
 import { NotebookPanel, INotebookModel } from '@jupyterlab/notebook';
 import { DocumentRegistry } from '@jupyterlab/docregistry';
 import { IDisposable } from '@lumino/disposable';
-import { openDeploymentDialog  } from './deploymentMenu';
-import { openListDeploymentsDialog  } from './listDeployments';
+import { openDeploymentDialog } from './deploymentMenu';
+import { openListDeploymentsDialog } from './listDeployments';
 import { treeViewIcon, listIcon } from '@jupyterlab/ui-components'; // kernelIcon
 
 export class ButtonExtension
