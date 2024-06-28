@@ -34,7 +34,7 @@ const plugin: JupyterFrontEndPlugin<void> = {
     // Add the widget to the top area of JupyterLab interface
     app.shell.add(widget, 'top', { rank: 1000 });
 
-    let buttonExtension = new ButtonExtension();
+    const buttonExtension = new ButtonExtension();
     app.docRegistry.addWidgetExtension('Notebook', buttonExtension);
   }
 };
