@@ -13,7 +13,8 @@
   margin-right: 10px;
   font-weight: bold;
   font-family: Arial, sans-serif;
-  color: #FF7F50; /* #F3D35A #333 #EBB12A*/
+  color: #ff7f50;
+/* #F3D35A #333 #EBB12A*/
   padding: 10px 20px;
   border-radius: 5px;
   background-image: url('./apricot-logo.png');
@@ -39,8 +40,13 @@
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 .success-container {
@@ -56,11 +62,11 @@
   width: 100px;
   height: 100px;
   border-radius: 50%;
-  background-color: #4CAF50;
+  background-color: #4caf50;
   display: flex;
   justify-content: center;
   align-items: center;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 10%);
   margin-bottom: 20px;
 }
 
@@ -74,7 +80,7 @@
   font-size: 16px;
   margin: 0;
 }
-  
+
 /* Styles for the dialog */
 .dialog-content {
   padding: 20px;
@@ -95,7 +101,8 @@
   font-size: 14px;
 }
 
-.deployments-table th, .deployments-table td {
+.deployments-table th,
+.deployments-table td {
   border: 1px solid #ddd;
   padding: 8px;
   text-align: left;
@@ -118,7 +125,7 @@
 
 .dialog-button {
   background-color: #007bff;
-  color: #ffffff;
+  color: #fff;
   border: none;
   border-radius: 4px;
   padding: 8px 16px;
