@@ -6,7 +6,7 @@ imports:
 description: Deploy a Galaxy Server using a local LRMS.
 
 metadata:
-  template_version: "1.0.0"
+  template_version: '1.0.0'
   template_name: Galaxy
   display_name: Deploy a Galaxy portal
   icon: images/galaxy.png
@@ -18,9 +18,7 @@ metadata:
     - simple-node-disk.yml
 
 topology_template:
-
   inputs:
-
     admin_email:
       type: string
       description: Email of the Galaxy admin user
@@ -31,7 +29,6 @@ topology_template:
       default: adminpass
 
   node_templates:
-
     galaxy_portal:
       type: tosca.nodes.indigo.GalaxyPortal
       capabilities:
@@ -54,4 +51,12 @@ topology_template:
 
   outputs:
     galaxy_url:
-      value: { concat: [ 'https://', get_attribute: [ simple_node, public_address, 0 ], ':8443/' ] }
+      value:
+        {
+          concat:
+            [
+              'https://',
+              get_attribute: [simple_node, public_address, 0],
+              ':8443/'
+            ]
+        }

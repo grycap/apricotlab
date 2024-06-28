@@ -11,10 +11,10 @@ kind: frontend
 labextension_name: apricot
 mimetype: ''
 mimetype_name: ''
-project_short_description: Advanced Platform for Reproducible Infrastructure in the
-    Cloud via Open Tools.
+project_short_description:
+  Advanced Platform for Reproducible Infrastructure in the
+  Cloud via Open Tools.
 python_name: apricot
 repository: https://github.com/AntonioSanch3z/apricotLab
 test: false
 viewer_name: ''
-

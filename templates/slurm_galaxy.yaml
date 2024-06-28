@@ -6,7 +6,7 @@ imports:
 description: Deploy a Galaxy portal with an SLURM Virtual Cluster.
 
 metadata:
-  template_version: "1.0.0"
+  template_version: '1.0.0'
   template_name: Galaxy
   display_name: Deploy a Galaxy portal in a SLURM cluster
   icon: images/galaxy_slurm.png
@@ -17,7 +17,6 @@ metadata:
 
 topology_template:
   inputs:
-
     admin_email:
       type: string
       description: Email of the Galaxy admin user
@@ -32,10 +31,9 @@ topology_template:
       description: Version of SLURM to be installed
       default: 20.11.9
       constraints:
-        - valid_values: [ '20.11.9' ]
+        - valid_values: ['20.11.9']
 
   node_templates:
-
     galaxy_portal:
       type: tosca.nodes.indigo.GalaxyPortal
       capabilities:
@@ -53,11 +51,19 @@ topology_template:
     galaxy_wn:
       type: tosca.nodes.indigo.GalaxyWN
       properties:
-        front_end_ip: { get_attribute: [ lrms_server, private_address, 0 ] }
+        front_end_ip: { get_attribute: [lrms_server, private_address, 0] }
       requirements:
         - host: lrms_wn
         - dependency: galaxy_portal
 
   outputs:
     galaxy_url:
-      value: { concat: [ 'https://', get_attribute: [ lrms_server, public_address, 0 ], ':8443/' ] }
+      value:
+        {
+          concat:
+            [
+              'https://',
+              get_attribute: [lrms_server, public_address, 0],
+              ':8443/'
+            ]
+        }
