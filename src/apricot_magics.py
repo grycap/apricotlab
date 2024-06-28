@@ -560,20 +560,3 @@ def load_ipython_extension(ipython):
     autoloaded by IPython at startup time.
     """
     ipython.register_magics(Apricot_Magics)
-
-
-# EGI FedCloud specific parameters (https://imdocs.readthedocs.io/en/latest/client.html#egi-fedcloud-specific-parameters)
-# To use the EGI CheckIn to authenticate with a Keystone server properly configured the parameters are the following (see more info at EGI Documentation):
-
-# username: egi.eu.
-
-# tenant: openid.
-
-# password: Specifies the EGI CheckIn access token.
-
-# domain: Specifies the OpenStack project to use. This parameter is optional. If not set the first project returned by Keystone will be selected.
-
-# So the auth line will be like that:
-
-# id = ost; type = OpenStack; host = https://ostserver:5000; username = egi.eu; tenant = openid; password = egi_aai_token_value; auth_version = 3.x_oidc_access_token; domain = project_name
-# User should only provide host and password (the token from https://github.com/ai4os/ai4-compose/blob/main/elyra/nodes/get_egi_token.py). If there is a file with the token, EGI button appears. If there is no file, the button wont appear
