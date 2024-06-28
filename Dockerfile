@@ -1,4 +1,4 @@
-#Download base image ubuntu 18.04
+#Download base image ubuntu 22.04
 FROM ubuntu:22.04
 
 # Set root user
@@ -7,6 +7,7 @@ USER root
 # Update Ubuntu Software repository and install python, jupyter lab and git
 RUN apt-get update && \
     apt-get install -y \
+        sshpass \
         curl \
         python3 \
         python3-pip \
@@ -34,9 +35,8 @@ USER jupyteruser
 WORKDIR /home/jupyteruser
 
 # Clone git, install, get the examples and clear files
-#RUN git clone https://github.com/grycap/apricotlab.git && cd /home/jupyteruser/apricot 
-#\
-#    && sh install.sh && cd /home/jupyteruser && cp -r apricot/examples . && mv apricot .apricot_git
+RUN git clone https://github.com/grycap/apricotlab.git && cd apricotlab && \
+    sh install.sh && cd .. && cp -r apricotlab/examples . && mv apricotlab .apricot_git
 
 # Set entry point
 ENTRYPOINT ["/bin/jupyter-apricot"]
