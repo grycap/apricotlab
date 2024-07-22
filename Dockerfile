@@ -1,10 +1,7 @@
-#Download base image ubuntu 22.04
 FROM ubuntu:22.04
 
-# Set root user
 USER root
 
-# Update Ubuntu Software repository and install python, jupyter lab and git
 RUN apt-get update && \
     apt-get install -y \
         sshpass \
@@ -12,31 +9,36 @@ RUN apt-get update && \
         python3 \
         python3-pip \
         git \
+        jq \
     && \
     python3 -m pip install --upgrade pip && \
     python3 -m pip install \
         jupyterlab \
-        IM-client
+        IM-client \
+        tabulate
 
-# Optional: Clean up package cache to reduce image size
+# Install yarn
+RUN curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add - && \
+    echo "deb https://dl.yarnpkg.com/debian/ stable main" | tee /etc/apt/sources.list.d/yarn.list && \
+    apt-get update && \
+    apt-get install -y yarn
+
+RUN yarn add js-yaml
+
 RUN apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Create the script to init jupyter lab
-RUN echo "#!/bin/bash" > /bin/jupyter-apricot && \
-    echo "jupyter lab --ip 0.0.0.0 --no-browser" >> /bin/jupyter-apricot && \
-    chmod +x /bin/jupyter-apricot
+RUN mkdir -p /home/apricotlab && \
+    git clone https://github.com/grycap/apricotlab /home/apricotlab
 
-# Create a user for jupyter lab
-RUN useradd -ms /bin/bash jupyteruser
+# Set the working directory (optional, depending on your needs)
+WORKDIR /home/apricotlab/
 
-# Change to jupyter lab user
-USER jupyteruser
-WORKDIR /home/jupyteruser
+# Install the Jupyter Notebook extension
+RUN pip install -ve .
 
-# Clone git, install, get the examples and clear files
-RUN git clone https://github.com/grycap/apricotlab.git && cd apricotlab && \
-    sh install.sh && cd .. && cp -r apricotlab/examples . && mv apricotlab .apricot_git
+# Expose port 8888 (default port for Jupyter Lab)
+EXPOSE 8888/tcp
 
-# Set entry point
-ENTRYPOINT ["/bin/jupyter-apricot"]
+# Command to keep container running and wait for interaction
+CMD ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root"]
