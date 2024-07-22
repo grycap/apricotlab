@@ -200,7 +200,7 @@ function infrastructureState(infrastructure: IInfrastructure): string {
     vo = '',
     EGIToken = ''
   } = infrastructure;
-  
+
   const pipeAuth = 'auth-pipe';
 
   let authContent = `id=im; type=InfrastructureManager; username=${IMuser}; password=${IMpass};\n`;
@@ -263,7 +263,7 @@ function infrastructureIP(infrastructure: IInfrastructure): string {
     vo = '',
     EGIToken = ''
   } = infrastructure;
-  
+
   const pipeAuth = 'auth-pipe';
 
   let authContent = `id=im; type=InfrastructureManager; username=${IMuser}; password=${IMpass};\n`;
