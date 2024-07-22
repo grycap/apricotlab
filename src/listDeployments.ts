@@ -64,7 +64,7 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
   const kernel = await kernelManager.startNew();
 
   try {
-    // Use a bash command to read the contents of infrastructuresList.json
+    // Read the contents of infrastructuresList.json
     const cmdReadJson = '%%bash\n' + 'cat $PWD/infrastructuresList.json';
 
     const futureReadJson = kernel.requestExecute({ code: cmdReadJson });
@@ -200,6 +200,7 @@ function infrastructureState(infrastructure: IInfrastructure): string {
     vo = '',
     EGIToken = ''
   } = infrastructure;
+  
   const pipeAuth = 'auth-pipe';
 
   let authContent = `id=im; type=InfrastructureManager; username=${IMuser}; password=${IMpass};\n`;
@@ -262,6 +263,7 @@ function infrastructureIP(infrastructure: IInfrastructure): string {
     vo = '',
     EGIToken = ''
   } = infrastructure;
+  
   const pipeAuth = 'auth-pipe';
 
   let authContent = `id=im; type=InfrastructureManager; username=${IMuser}; password=${IMpass};\n`;

@@ -231,14 +231,13 @@ async function createImagesDropdown(
 
   // Check if the output contains "error" in the message
   if (output.toLowerCase().includes('error')) {
-    // If "error" is found, trigger an alert with the output
     alert(output);
   }
 
   // Find the first occurrence of '[' and get the substring from there
   const jsonStartIndex = output.indexOf('[');
   if (jsonStartIndex === -1) {
-    console.error('No os images available.');
+    console.error('No OS images available.');
     return;
   }
 
@@ -512,8 +511,7 @@ const getEGIToken = async () => {
 function deployIMCommand(obj: IDeployInfo, mergedTemplate: string): string {
   const pipeAuth = `${obj.infName}-auth-pipe`;
   const imageRADL = obj.infName;
-  const templatePath = `~/.imclient/templates/${imageRADL}.yaml`;
-
+  const templatePath = `$PWD/deployed-templates/${imageRADL}.yaml`;
   let cmd = `%%bash
             PWD=$(pwd)
             # Remove pipes if they exist

@@ -1,28 +1,12 @@
 # apricot
 
-[![Github Actions Status](https://github.com/AntonioSanch3z/apricotLab/workflows/Build/badge.svg)](https://github.com/AntonioSanch3z/apricotLab/actions/workflows/build.yml)
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/AntonioSanch3z/apricotLab/main?urlpath=lab)
+[![Github Actions Status](https://github.com/grycap/apricotlab/workflows/Build/badge.svg)](https://github.com/grycap/apricotlab/actions/workflows/build.yml)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/grycap/apricotlab/main?urlpath=lab)
 Advanced Platform for Reproducible Infrastructure in the Cloud via Open Tools.
 
 ## Requirements
 
 - JupyterLab >= 4.0.0
-
-## Install
-
-To install the extension, execute:
-
-```bash
-pip install apricot
-```
-
-## Uninstall
-
-To remove the extension, execute:
-
-```bash
-pip uninstall apricot
-```
 
 ## Contributing
 
