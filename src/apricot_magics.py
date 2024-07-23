@@ -37,7 +37,7 @@ class Apricot_Magics(Magics):
         elif found_infrastructure['type'] == "EC2":
             auth_content += f"id = {found_infrastructure['id']}; type = {found_infrastructure['type']}; username = {found_infrastructure['user']}; password = {found_infrastructure['pass']}"
         elif found_infrastructure['type'] == "EGI":
-            auth_content += f"id = {found_infrastructure['id']}; type = {found_infrastructure['type']}; host = {found_infrastructure['host']}; vo = {found_infrastructure['vo']}; token = {found_infrastructure['EGITokan']}"
+            auth_content += f"id = {found_infrastructure['id']}; type = {found_infrastructure['type']}; host = {found_infrastructure['host']}; vo = {found_infrastructure['vo']}; token = {found_infrastructure['EGIToken']}"
         # Write auth-pipe content to a file
         with open('auth-pipe', 'w') as auth_file:
             auth_file.write(auth_content)
@@ -235,6 +235,49 @@ class Apricot_Magics(Magics):
             os.remove('auth-pipe')
 
         return
+
+    @line_magic
+    def apricot_info(self, line):
+        if len(line) == 0:
+            print("Usage: apricot_info infrastructure-id\n")
+            return "Fail"
+
+        # Split the input line to extract the infrastructure ID
+        inf_id = line.split()[0]
+
+        try:
+            # Create auth-pipe for the specified infrastructure
+            self.create_auth_pipe(inf_id)
+        except ValueError as e:
+            print(e)
+            return "Failed"
+
+        # Construct the command to retrieve log messages
+        cmd_getinfo = [
+            "python3",
+            "/usr/local/bin/im_client.py",
+            "getinfo",
+            inf_id,
+            "-a",
+            "auth-pipe",
+            "-r",
+            "https://im.egi.eu/im",
+        ]
+
+        try:
+            # Run the command, capturing stdout and stderr
+            result = run(cmd_getinfo, stdout=PIPE, stderr=PIPE, check=True, text=True)
+            print(result.stdout)
+        except CalledProcessError as e:
+            # Handle errors raised by the command
+            print("Status: fail " + str(e.returncode) + "\n")
+            print(e.stderr + "\n")
+            print(e.stdout)
+            return "Fail"
+        finally:
+            # Clean up auth-pipe file
+            if os.path.exists('auth-pipe'):
+                os.remove('auth-pipe')
 
     @line_magic
     def apricot_vmls(self, line):
@@ -550,8 +593,6 @@ class Apricot_Magics(Magics):
                 return "Done"
 
         return "Done"
-
-
 
 def load_ipython_extension(ipython):
     """
