@@ -1,6 +1,8 @@
 import { KernelManager } from '@jupyterlab/services';
 import { Dialog } from '@jupyterlab/apputils';
 import { Widget } from '@lumino/widgets';
+import { getIMClientPath } from './utils';
+
 
 interface IInfrastructure {
   IMuser: string;
@@ -113,7 +115,7 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
       const stateCell = row.insertCell();
 
       try {
-        const cmdState = infrastructureState(infrastructure);
+        const cmdState = await infrastructureState(infrastructure);
         // Execute kernel to get output
         const futureState = kernel.requestExecute({ code: cmdState });
 
@@ -149,7 +151,7 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
       }
 
       try {
-        const cmdIP = infrastructureIP(infrastructure);
+        const cmdIP = await infrastructureIP(infrastructure);
         // Execute kernel to get output
         const futureIP = kernel.requestExecute({ code: cmdIP });
 
@@ -185,7 +187,7 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
   await kernel.shutdown();
 }
 
-function infrastructureState(infrastructure: IInfrastructure): string {
+async function infrastructureState(infrastructure: IInfrastructure): Promise<string> {
   const {
     IMuser,
     IMpass,
@@ -202,6 +204,7 @@ function infrastructureState(infrastructure: IInfrastructure): string {
   } = infrastructure;
 
   const pipeAuth = 'auth-pipe';
+  const imClientPath = await getIMClientPath();
 
   let authContent = `id=im; type=InfrastructureManager; username=${IMuser}; password=${IMpass};\n`;
   authContent += `id=${id}; type=${type}; host=${host};`;
@@ -232,7 +235,7 @@ function infrastructureState(infrastructure: IInfrastructure): string {
           # Command to create the infrastructure manager client credentials
           echo -e "${authContent}" > $PWD/${pipeAuth} &
 
-          stateOut=$(python3 /usr/local/bin/im_client.py getstate ${infrastructureID} -r https://im.egi.eu/im -a $PWD/${pipeAuth})
+          stateOut=$(python3 ${imClientPath} getstate ${infrastructureID} -r https://im.egi.eu/im -a $PWD/${pipeAuth})
           # Remove pipe
           rm -f $PWD/${pipeAuth} &> /dev/null
           # Print state output on stderr or stdout
@@ -248,7 +251,7 @@ function infrastructureState(infrastructure: IInfrastructure): string {
   return cmd;
 }
 
-function infrastructureIP(infrastructure: IInfrastructure): string {
+async function infrastructureIP(infrastructure: IInfrastructure): Promise<string> {
   const {
     IMuser,
     IMpass,
@@ -265,6 +268,7 @@ function infrastructureIP(infrastructure: IInfrastructure): string {
   } = infrastructure;
 
   const pipeAuth = 'auth-pipe';
+  const imClientPath = await getIMClientPath();
 
   let authContent = `id=im; type=InfrastructureManager; username=${IMuser}; password=${IMpass};\n`;
   authContent += `id=${id}; type=${type}; host=${host};`;
@@ -295,7 +299,7 @@ function infrastructureIP(infrastructure: IInfrastructure): string {
           # Command to create the infrastructure manager client credentials
           echo -e "${authContent}" > $PWD/${pipeAuth} &
 
-          stateOut=$(python3 /usr/local/bin/im_client.py getvminfo ${infrastructureID} 0 net_interface.1.ip -r https://im.egi.eu/im -a $PWD/${pipeAuth})
+          stateOut=$(python3 ${imClientPath} getvminfo ${infrastructureID} 0 net_interface.1.ip -r https://im.egi.eu/im -a $PWD/${pipeAuth})
           # Remove pipe
           rm -f $PWD/${pipeAuth} &> /dev/null
           # Print state output on stderr or stdout

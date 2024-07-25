@@ -3,6 +3,8 @@ import { ContentsManager } from '@jupyterlab/services';
 import { KernelManager } from '@jupyterlab/services';
 import { Widget } from '@lumino/widgets';
 import { Dialog } from '@jupyterlab/apputils';
+import { executeKernelCommand, getIMClientPath } from './utils';
+
 
 interface IDeployInfo {
   IMuser: string;
@@ -177,27 +179,6 @@ const addFormInput = (
 function getInputValue(inputId: string): string {
   const input = document.getElementById(inputId) as HTMLInputElement;
   return input.value;
-}
-
-async function executeKernelCommand(
-  command: string,
-  callback: (output: string) => void
-): Promise<void> {
-  try {
-    const kernelManager = new KernelManager();
-    const kernel = await kernelManager.startNew();
-    const future = kernel.requestExecute({ code: command });
-
-    future.onIOPub = msg => {
-      const content = msg.content as any;
-      const outputText =
-        content.text || (content.data && content.data['text/plain']);
-      callback(outputText);
-    };
-  } catch (error) {
-    console.error('Error executing kernel command:', error);
-    deploying = false;
-  }
 }
 
 async function computeHash(input: string): Promise<string> {
@@ -445,8 +426,9 @@ async function createChildsForm(
 //*   Bash commands   *//
 //*********************//
 
-function selectImage(obj: IDeployInfo): string {
+async function selectImage(obj: IDeployInfo): Promise<string> {
   const pipeAuth = `${obj.infName}-auth-pipe`;
+  const imClientPath = await getIMClientPath();
 
   let cmd = `%%bash
             PWD=$(pwd)
@@ -473,7 +455,7 @@ function selectImage(obj: IDeployInfo): string {
 
   cmd += `echo -e "${authContent}" > $PWD/${pipeAuth} &
             # Create final command where the output is stored in "imageOut"
-            imageOut=$(python3 /usr/local/bin/im_client.py -a $PWD/${pipeAuth} -r https://im.egi.eu/im cloudimages ${obj.id})
+            imageOut=$(python3 ${imClientPath} -a $PWD/${pipeAuth} -r https://im.egi.eu/im cloudimages ${obj.id})
             # Remove pipe
             rm -f $PWD/${pipeAuth} &> /dev/null
             # Print IM output on stderr or stdout
@@ -508,10 +490,12 @@ const getEGIToken = async () => {
   });
 };
 
-function deployIMCommand(obj: IDeployInfo, mergedTemplate: string): string {
+async function deployIMCommand(obj: IDeployInfo, mergedTemplate: string): Promise<string> {
   const pipeAuth = `${obj.infName}-auth-pipe`;
+  const imClientPath = await getIMClientPath();
   const imageRADL = obj.infName;
   const templatePath = `$PWD/deployed-templates/${imageRADL}.yaml`;
+
   let cmd = `%%bash
             PWD=$(pwd)
             # Remove pipes if they exist
@@ -539,7 +523,7 @@ function deployIMCommand(obj: IDeployInfo, mergedTemplate: string): string {
 
   cmd += `echo -e "${authContent}" > $PWD/${pipeAuth} &
             # Create final command where the output is stored in "imageOut"
-            imageOut=$(python3 /usr/local/bin/im_client.py -a $PWD/${pipeAuth} create ${templatePath} -r https://im.egi.eu/im)
+            imageOut=$(python3 ${imClientPath} -a $PWD/${pipeAuth} create ${templatePath} -r https://im.egi.eu/im)
             # Remove pipe
             rm -f $PWD/${pipeAuth} &> /dev/null
             # Print IM output on stderr or stdout
@@ -921,7 +905,7 @@ async function deployInfraConfiguration(
 
   if (deployInfo.deploymentType !== 'EC2') {
     // Create select image command
-    const cmdImageNames = selectImage(deployInfo);
+    const cmdImageNames = await selectImage(deployInfo);
 
     try {
       // Execute the deployment command
@@ -1106,7 +1090,7 @@ async function deployFinalRecipe(
     const mergedYamlContent = jsyaml.dump(mergedTemplate);
 
     // Create deploy command
-    const cmdDeploy = deployIMCommand(deployInfo, mergedYamlContent);
+    const cmdDeploy = await deployIMCommand(deployInfo, mergedYamlContent);
 
     // Show loading spinner
     dialogBody.innerHTML =
