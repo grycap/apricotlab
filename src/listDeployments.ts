@@ -3,7 +3,6 @@ import { Dialog } from '@jupyterlab/apputils';
 import { Widget } from '@lumino/widgets';
 import { getIMClientPath } from './utils';
 
-
 interface IInfrastructure {
   IMuser: string;
   IMpass: string;
@@ -187,7 +186,9 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
   await kernel.shutdown();
 }
 
-async function infrastructureState(infrastructure: IInfrastructure): Promise<string> {
+async function infrastructureState(
+  infrastructure: IInfrastructure
+): Promise<string> {
   const {
     IMuser,
     IMpass,
@@ -251,7 +252,9 @@ async function infrastructureState(infrastructure: IInfrastructure): Promise<str
   return cmd;
 }
 
-async function infrastructureIP(infrastructure: IInfrastructure): Promise<string> {
+async function infrastructureIP(
+  infrastructure: IInfrastructure
+): Promise<string> {
   const {
     IMuser,
     IMpass,

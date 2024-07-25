@@ -28,7 +28,11 @@ export async function getIMClientPath(): Promise<string> {
       if (output.trim()) {
         resolve(output.trim());
       } else {
-        reject(new Error('Failed to find im_client.py path. Maybe IM-client is not installed.'));
+        reject(
+          new Error(
+            'Failed to find im_client.py path. Maybe IM-client is not installed.'
+          )
+        );
       }
     }).catch(reject);
   });

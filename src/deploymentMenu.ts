@@ -5,7 +5,6 @@ import { Widget } from '@lumino/widgets';
 import { Dialog } from '@jupyterlab/apputils';
 import { executeKernelCommand, getIMClientPath } from './utils';
 
-
 interface IDeployInfo {
   IMuser: string;
   IMpass: string;
@@ -490,7 +489,10 @@ const getEGIToken = async () => {
   });
 };
 
-async function deployIMCommand(obj: IDeployInfo, mergedTemplate: string): Promise<string> {
+async function deployIMCommand(
+  obj: IDeployInfo,
+  mergedTemplate: string
+): Promise<string> {
   const pipeAuth = `${obj.infName}-auth-pipe`;
   const imClientPath = await getIMClientPath();
   const imageRADL = obj.infName;
