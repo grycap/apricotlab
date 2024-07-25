@@ -495,8 +495,7 @@ async function deployIMCommand(
 ): Promise<string> {
   const pipeAuth = `${obj.infName}-auth-pipe`;
   const imClientPath = await getIMClientPath();
-  const imageRADL = obj.infName;
-  const templatePath = `$PWD/deployed-templates/${imageRADL}.yaml`;
+  const templatePath = `$PWD/deployed-template.yaml`;
 
   let cmd = `%%bash
             PWD=$(pwd)
