@@ -30,8 +30,6 @@ Also, APRICOT requires a [Jupyter installation](https://jupyter.org/install), si
 
 ### Components
 
-![Alt text](docs/images/APRICOT_components.png?raw=true "Components")
-
 APRICOT has been constructed using the following components:
 
 - [**Jupyter**](https://jupyter.org/), an open-source web application that allows you to create and share documents that contain live code, equations, visualizations and narrative text.
