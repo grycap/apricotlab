@@ -52,7 +52,7 @@ To manage and use previous deployed infrastructures within Jupyter notebook envi
     - Arguments: infrastructure identifier, download files paths, local destination path.
 - Magic line and cell:
   - **apricot**: Perform multiple tasks depending on input command.
-    - exec: Takes as arguments a infrastructure identifier and a command to be executed in the specified infrastructure. This call is synchronous.
+    - exec: Takes as arguments a infrastructure identifier and an OS command to be executed in the specified infrastructure. This call is synchronous.
     - list: Same as _apricot_ls_
     - destroy: Take a infrastructure identifier as argument an destroys the infrastructure.
 
