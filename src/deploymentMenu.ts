@@ -16,13 +16,13 @@ type UserInput = {
   };
   nodeTemplates: any;
   outputs: any;
-}
+};
 
 type ButtonConfig = {
   text: string;
   onClick: () => void;
   className?: string;
-}
+};
 
 interface IDeployInfo {
   IMuser: string;
@@ -101,7 +101,7 @@ const deployInfo: IDeployInfo = {
     image: ''
   },
   childs: []
-}
+};
 
 let imageOptions: { uri: string; name: string }[] = [];
 
@@ -167,7 +167,7 @@ const clearDialogElements = (dialogBody: HTMLElement): void => {
       dialogBody.removeChild(child);
     }
   });
-}
+};
 
 const addFormInput = (
   form: HTMLFormElement,
@@ -188,7 +188,7 @@ const addFormInput = (
   form.appendChild(input);
 
   form.appendChild(document.createElement('br'));
-}
+};
 
 function getInputValue(inputId: string): string {
   const input = document.getElementById(inputId) as HTMLInputElement;
@@ -502,7 +502,7 @@ const getEGIToken = async () => {
       resolve(outputText.trim());
     };
   });
-}
+};
 
 async function deployIMCommand(
   obj: IDeployInfo,
@@ -581,7 +581,7 @@ generateIMCredentials().then(() => {
     deployInfo.IMuser,
     deployInfo.IMpass
   );
-})
+});
 
 const deployChooseProvider = (dialogBody: HTMLElement): void => {
   // Clear dialog body
@@ -627,7 +627,7 @@ const deployChooseProvider = (dialogBody: HTMLElement): void => {
     });
     dialogBody.appendChild(button);
   });
-}
+};
 
 const deployRecipeType = (dialogBody: HTMLElement): void => {
   dialogBody.innerHTML = '';
@@ -644,11 +644,24 @@ const deployRecipeType = (dialogBody: HTMLElement): void => {
     },
     {
       name: 'Slurm',
-      childs: ['slurm_cluster', 'slurm_elastic', 'slurm_galaxy', 'docker_cluster']
+      childs: [
+        'slurm_cluster',
+        'slurm_elastic',
+        'slurm_galaxy',
+        'docker_cluster'
+      ]
     },
     {
       name: 'Kubernetes',
-      childs: ['kubernetes', 'kubeapps', 'prometheus', 'minio_compose', 'noderedvm', 'influxdb', 'argo']
+      childs: [
+        'kubernetes',
+        'kubeapps',
+        'prometheus',
+        'minio_compose',
+        'noderedvm',
+        'influxdb',
+        'argo'
+      ]
     }
   ];
 
@@ -672,7 +685,7 @@ const deployRecipeType = (dialogBody: HTMLElement): void => {
 
   // Create buttons using the helper function
   createDialogButtons(dialogBody, recipeButtons);
-}
+};
 
 const createCheckboxesForChilds = async (
   dialogBody: HTMLElement,
@@ -693,7 +706,9 @@ const createCheckboxesForChilds = async (
   const contentsManager = new ContentsManager();
   await Promise.all(
     childs.map(async child => {
-      const file = await contentsManager.get(`templates/${child.toLowerCase()}.yaml`);
+      const file = await contentsManager.get(
+        `templates/${child.toLowerCase()}.yaml`
+      );
       const parsedYaml: any = jsyaml.load(file.content as string);
       const templateName = parsedYaml.metadata.template_name;
 
@@ -736,7 +751,7 @@ const createCheckboxesForChilds = async (
       }
     }
   ]);
-}
+};
 
 const deployProviderCredentials = async (
   dialogBody: HTMLElement
@@ -844,7 +859,7 @@ const deployProviderCredentials = async (
       }
     }
   ]);
-}
+};
 
 async function deployInfraConfiguration(
   dialogBody: HTMLElement
@@ -917,8 +932,12 @@ async function deployInfraConfiguration(
     {
       text: deployInfo.childs.length === 0 ? 'Deploy' : 'Next',
       onClick: () => {
-        const selectedImageElement = document.getElementById('imageDropdown') as HTMLSelectElement;
-        const selectedImageUri = selectedImageElement ? selectedImageElement.value : '';
+        const selectedImageElement = document.getElementById(
+          'imageDropdown'
+        ) as HTMLSelectElement;
+        const selectedImageUri = selectedImageElement
+          ? selectedImageElement.value
+          : '';
 
         // Validate the selected image and other form inputs
         const isValid = [
@@ -929,10 +948,14 @@ async function deployInfraConfiguration(
           getInputValue('infrastructureMem'),
           getInputValue('infrastructureDiskSize'),
           getInputValue('infrastructureGPUs')
-        ].every(value => value !== null && value !== '' && value !== 'undefined');
+        ].every(
+          value => value !== null && value !== '' && value !== 'undefined'
+        );
 
         if (!isValid || selectedImageUri === '') {
-          alert('The infrastructure is not well configured. Please check all fields and try again.');
+          alert(
+            'The infrastructure is not well configured. Please check all fields and try again.'
+          );
           return;
         }
 
@@ -1028,7 +1051,7 @@ const deployChildsConfiguration = async (
                   };
                 });
 
-              // Return the outputs to create final recipe to deploy
+                // Return the outputs to create final recipe to deploy
                 return {
                   name: childName,
                   inputs: inputsWithValues,
@@ -1050,7 +1073,7 @@ const deployChildsConfiguration = async (
       className: 'next-button'
     }
   ]);
-}
+};
 
 async function deployFinalRecipe(
   dialogBody: HTMLElement,
@@ -1175,7 +1198,7 @@ const handleFinalDeployOutput = async (
                 `;
     deploying = false;
   }
-}
+};
 
 // Exporting the function that initiates the dialog
 export { openDeploymentDialog };
