@@ -1,6 +1,6 @@
 from tabulate import tabulate
 from IPython.core.magic import Magics, line_magic, line_cell_magic, magics_class
-from subprocess import run, PIPE, CalledProcessError
+from subprocess import run, PIPE, CalledProcessError, check_output
 
 import os
 import json
@@ -8,19 +8,46 @@ import json
 @magics_class
 class Apricot_Magics(Magics):
 
+    def __init__(self, shell):
+        super().__init__(shell)
+        self.im_client_path = None
+
     ########################
     #  Auxiliar functions  #
     ########################
 
+    def find_im_client_path(self) -> str:
+        try:
+            im_client_path = check_output(['which', 'im_client.py'], text=True).strip()
+            if not im_client_path:
+                raise FileNotFoundError("im_client.py not found in the system PATH.")
+            return im_client_path
+        except CalledProcessError:
+            raise FileNotFoundError("Failed to find im_client.py in the system PATH.")
+
+    def get_im_client_path(self) -> str:
+        if self.im_client_path is None:
+            self.find_im_client_path()
+        return self.im_client_path
+
     def create_auth_pipe(self, infrastructure_id):
+        # Get the absolute path to the infrastructuresList.json file
+        base_dir = os.path.dirname(__file__)
+        file_path = os.path.abspath(os.path.join(base_dir, '..', 'infrastructuresList.json'))
+
         # Read the JSON data from the file
-        with open('../infrastructuresList.json') as f:
-            data = json.load(f)
+        try:
+            with open(file_path) as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"File not found: {file_path}")
+        except json.JSONDecodeError:
+            raise ValueError(f"Error decoding JSON from file: {file_path}")
 
         # Find the infrastructure with the specified ID
         found_infrastructure = None
-        for infrastructure in data['infrastructures']:
-            if infrastructure['infrastructureID'] == infrastructure_id:
+        for infrastructure in data.get('infrastructures', []):
+            if infrastructure.get('infrastructureID') == infrastructure_id:
                 found_infrastructure = infrastructure
                 break
 
@@ -38,6 +65,7 @@ class Apricot_Magics(Magics):
             auth_content += f"id = {found_infrastructure['id']}; type = {found_infrastructure['type']}; username = {found_infrastructure['user']}; password = {found_infrastructure['pass']}"
         elif found_infrastructure['type'] == "EGI":
             auth_content += f"id = {found_infrastructure['id']}; type = {found_infrastructure['type']}; host = {found_infrastructure['host']}; vo = {found_infrastructure['vo']}; token = {found_infrastructure['EGIToken']}"
+        
         # Write auth-pipe content to a file
         with open('auth-pipe', 'w') as auth_file:
             auth_file.write(auth_content)
@@ -50,10 +78,11 @@ class Apricot_Magics(Magics):
         ##########################################
         private_key_content = None
         host_ip = None
+        im_client_path = self.get_im_client_path()
 
         cmd_getvminfo = [
             'python3',
-            '/usr/local/bin/im_client.py',
+            im_client_path,
             'getvminfo',
             infrastructure_id,
             vm_id,
@@ -111,6 +140,8 @@ class Apricot_Magics(Magics):
             print("Usage: apricot_log infrastructure-id\n")
             return "Fail"
 
+        im_client_path = self.get_im_client_path()
+        
         # Split the input line to extract the infrastructure ID
         inf_id = line.split()[0]
 
@@ -124,7 +155,7 @@ class Apricot_Magics(Magics):
         # Construct the command to retrieve log messages
         cmd_getcontmsg = [
             "python3",
-            "/usr/local/bin/im_client.py",
+            im_client_path,
             "getcontmsg",
             inf_id,
             "-a",
@@ -151,9 +182,17 @@ class Apricot_Magics(Magics):
     @line_magic
     def apricot_ls(self, line):
         infrastructures_list = []
+        im_client_path = self.get_im_client_path()
 
-        with open('../infrastructuresList.json') as f:
-            data = json.load(f)
+        base_dir = os.path.dirname(__file__)
+        file_path = os.path.abspath(os.path.join(base_dir, '..', 'infrastructuresList.json'))
+
+        try:
+            with open(file_path) as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            print(f"File not found: {file_path}")
+            return
 
         # Iterate through each infrastructure
         for infrastructure in data.get('infrastructures', []):
@@ -172,7 +211,7 @@ class Apricot_Magics(Magics):
 
             cmd_getstate = [
                 'python3',
-                '/usr/local/bin/im_client.py',
+                im_client_path,
                 'getstate',
                 infrastructure_info['InfrastructureID'],
                 '-r',
@@ -199,7 +238,7 @@ class Apricot_Magics(Magics):
 
             cmd_getvminfo = [
                 'python3',
-                '/usr/local/bin/im_client.py',
+                im_client_path,
                 'getvminfo',
                 infrastructure_info['InfrastructureID'],
                 '0',
@@ -242,6 +281,8 @@ class Apricot_Magics(Magics):
             print("Usage: apricot_info infrastructure-id\n")
             return "Fail"
 
+        im_client_path = self.get_im_client_path()
+
         # Split the input line to extract the infrastructure ID
         inf_id = line.split()[0]
 
@@ -255,7 +296,7 @@ class Apricot_Magics(Magics):
         # Construct the command to retrieve log messages
         cmd_getinfo = [
             "python3",
-            "/usr/local/bin/im_client.py",
+            im_client_path,
             "getinfo",
             inf_id,
             "-a",
@@ -285,6 +326,8 @@ class Apricot_Magics(Magics):
             print("Usage: apricot_vmls infrastructure-id\n")
             return "Fail"
 
+        im_client_path = self.get_im_client_path()
+
         # Split the input line to extract the infrastructure ID
         inf_id = line.split()[0]
 
@@ -298,7 +341,7 @@ class Apricot_Magics(Magics):
 
         cmd_getinfo = [
             'python3',
-            '/usr/local/bin/im_client.py',
+            im_client_path,
             'getinfo',
             inf_id,
             '-r',
@@ -532,6 +575,7 @@ class Apricot_Magics(Magics):
                 print("Usage: destroy infrastructure-id")
                 return "Fail"
             else:
+                im_client_path = self.get_im_client_path()
                 inf_id = words[1]
 
                 try:
@@ -542,7 +586,7 @@ class Apricot_Magics(Magics):
 
                 cmd_destroy = [
                     'python3',
-                    '/usr/local/bin/im_client.py',
+                    im_client_path,
                     'destroy',
                     inf_id,
                     '-r',
@@ -570,8 +614,19 @@ class Apricot_Magics(Magics):
                         return "Fail"
 
                     # Load infrastructure list from JSON file
-                    with open('../infrastructuresList.json', 'r') as f:
-                        data = json.load(f)
+                    base_dir = os.path.dirname(__file__)
+                    file_path = os.path.abspath(os.path.join(base_dir, '..', 'infrastructuresList.json'))
+
+                    # Load infrastructure list from JSON file
+                    try:
+                        with open(file_path, 'r') as f:
+                            data = json.load(f)
+                    except FileNotFoundError:
+                        print(f"File not found: {file_path}")
+                        return "Failed"
+                    except json.JSONDecodeError:
+                        print(f"Error decoding JSON from file: {file_path}")
+                        return "Failed"
 
                     # Find and remove the infrastructure with the specified ID
                     for infrastructure in data['infrastructures']:
@@ -579,9 +634,16 @@ class Apricot_Magics(Magics):
                             data['infrastructures'].remove(infrastructure)
                             break
 
+                    base_dir = os.path.dirname(__file__)
+                    file_path = os.path.abspath(os.path.join(base_dir, '..', 'infrastructuresList.json'))
+
                     # Write the updated infrastructure list back to the JSON file
-                    with open('../infrastructuresList.json', 'w') as f:
-                        json.dump(data, f, indent=4)
+                    try:
+                        with open(file_path, 'w') as f:
+                            json.dump(data, f, indent=4)
+                    except IOError as e:
+                        print(f"Error writing to file {file_path}: {e}")
+                        return "Failed"
 
                 except CalledProcessError as e:
                     print(f"Error: {e}")

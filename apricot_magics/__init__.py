@@ -1,0 +1,1 @@
+from .apricot_magics import load_ipython_extension

@@ -4,6 +4,7 @@ import { KernelManager } from '@jupyterlab/services';
 import { Widget } from '@lumino/widgets';
 import { Dialog } from '@jupyterlab/apputils';
 import { executeKernelCommand, getIMClientPath } from './utils';
+import * as path from 'path';
 
 type UserInput = {
   name: string;
@@ -510,7 +511,7 @@ async function deployIMCommand(
 ): Promise<string> {
   const pipeAuth = `${obj.infName}-auth-pipe`;
   const imClientPath = await getIMClientPath();
-  const templatePath = '$PWD/deployed-template.yaml';
+  const templatePath = path.resolve(__dirname, '..', 'deployed-template.yaml');
 
   let cmd = `%%bash
             PWD=$(pwd)
@@ -556,7 +557,7 @@ async function deployIMCommand(
 }
 
 async function saveToInfrastructureList(obj: IInfrastructureData) {
-  const filePath = '$PWD/infrastructuresList.json';
+  const filePath = path.resolve(__dirname, '..', 'infrastructuresList.json');
 
   // Construct the bash command
   const cmd = `
