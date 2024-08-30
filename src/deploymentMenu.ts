@@ -51,14 +51,14 @@ interface IDeployInfo {
     [key: string]: number | string;
   };
   childs: string[];
-}
+};
 
 interface ITemplateInput {
   type: string;
   description: string;
   default: any;
   value?: any;
-}
+};
 
 interface IInfrastructureData {
   IMuser: string;
@@ -75,7 +75,7 @@ interface IInfrastructureData {
   domain: string;
   vo: string;
   EGIToken: string;
-}
+};
 
 const deployInfo: IDeployInfo = {
   IMuser: '',
@@ -108,6 +108,8 @@ let imageOptions: { uri: string; name: string }[] = [];
 
 let deploying = false; // Flag to prevent multiple deployments at the same time
 
+let imClientPath: string | undefined = undefined;
+
 //*****************//
 //* Aux functions *//
 //*****************//
@@ -133,7 +135,7 @@ async function openDeploymentDialog(): Promise<void> {
     // Logic to handle form submission
     console.log('Form submitted');
   });
-}
+};
 
 const createDialogButtons = (
   dialogBody: HTMLElement,
@@ -194,7 +196,7 @@ const addFormInput = (
 function getInputValue(inputId: string): string {
   const input = document.getElementById(inputId) as HTMLInputElement;
   return input.value;
-}
+};
 
 async function computeHash(input: string): Promise<string> {
   const msgUint8 = new TextEncoder().encode(input);
@@ -202,7 +204,7 @@ async function computeHash(input: string): Promise<string> {
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   return hashHex;
-}
+};
 
 async function generateIMCredentials(): Promise<void> {
   const randomInput = `${Date.now()}-${Math.random()}`;
@@ -212,7 +214,7 @@ async function generateIMCredentials(): Promise<void> {
   const pass = hash.substring(16, 32);
   deployInfo.IMuser = user;
   deployInfo.IMpass = pass;
-}
+};
 
 async function createImagesDropdown(
   output: string | undefined,
@@ -262,7 +264,7 @@ async function createImagesDropdown(
   } catch (error) {
     console.error('Error getting OS images:', error);
   }
-}
+};
 
 async function mergeTOSCARecipes(
   parsedConstantTemplate: any,
@@ -341,7 +343,7 @@ async function mergeTOSCARecipes(
     console.error('Error merging TOSCA recipes:', error);
     return JSON.parse(JSON.stringify(parsedConstantTemplate)); // Return a copy of the parsed constant template
   }
-}
+};
 
 async function createChildsForm(
   app: string,
@@ -435,7 +437,7 @@ async function createChildsForm(
     nodeTemplates,
     outputs
   };
-}
+};
 
 //*********************//
 //*   Bash commands   *//
@@ -443,7 +445,6 @@ async function createChildsForm(
 
 async function selectImage(obj: IDeployInfo): Promise<string> {
   const pipeAuth = `${obj.infName}-auth-pipe`;
-  const imClientPath = await getIMClientPath();
 
   let cmd = `%%bash
             PWD=$(pwd)
@@ -484,7 +485,7 @@ async function selectImage(obj: IDeployInfo): Promise<string> {
 
   console.log('cmd', cmd);
   return cmd;
-}
+};
 
 const getEGIToken = async () => {
   const code = `%%bash
@@ -554,7 +555,7 @@ async function deployIMCommand(
 
   console.log('cmd', cmd);
   return cmd;
-}
+};
 
 async function saveToInfrastructureList(obj: IInfrastructureData) {
   const filePath = path.resolve(__dirname, '..', 'infrastructuresList.json');
@@ -570,7 +571,7 @@ async function saveToInfrastructureList(obj: IInfrastructureData) {
 
   console.log('Bash command:', cmd);
   return cmd;
-}
+};
 
 //****************//
 //*  Deployment  *//
@@ -582,6 +583,14 @@ generateIMCredentials().then(() => {
     deployInfo.IMuser,
     deployInfo.IMpass
   );
+});
+
+getIMClientPath().then(path => {
+  process.env.IM_CLIENT_PATH = path;
+  imClientPath = path;
+  console.log('IM Client Path:', imClientPath);
+}).catch(error => {
+  console.error('Error getting IM Client Path:', error);
 });
 
 const deployChooseProvider = (dialogBody: HTMLElement): void => {
@@ -1135,7 +1144,7 @@ async function deployFinalRecipe(
     console.error('Error during deployment:', error);
     deploying = false;
   }
-}
+};
 
 const handleFinalDeployOutput = async (
   output: string | undefined,

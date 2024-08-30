@@ -1,6 +1,6 @@
 from tabulate import tabulate
 from IPython.core.magic import Magics, line_magic, line_cell_magic, magics_class
-from subprocess import run, PIPE, CalledProcessError, check_output
+from subprocess import run, PIPE, CalledProcessError
 
 import os
 import json
@@ -10,25 +10,11 @@ class Apricot_Magics(Magics):
 
     def __init__(self, shell):
         super().__init__(shell)
-        self.im_client_path = None
+        self.IM_CLIENT_PATH = os.getenv("IM_CLIENT_PATH")
 
     ########################
     #  Auxiliar functions  #
     ########################
-
-    def find_im_client_path(self) -> str:
-        try:
-            im_client_path = check_output(['which', 'im_client.py'], text=True).strip()
-            if not im_client_path:
-                raise FileNotFoundError("im_client.py not found in the system PATH.")
-            return im_client_path
-        except CalledProcessError:
-            raise FileNotFoundError("Failed to find im_client.py in the system PATH.")
-
-    def get_im_client_path(self) -> str:
-        if self.im_client_path is None:
-            self.find_im_client_path()
-        return self.im_client_path
 
     def create_auth_pipe(self, infrastructure_id):
         # Get the absolute path to the infrastructuresList.json file
@@ -139,8 +125,6 @@ class Apricot_Magics(Magics):
         if len(line) == 0:
             print("Usage: apricot_log infrastructure-id\n")
             return "Fail"
-
-        im_client_path = self.get_im_client_path()
         
         # Split the input line to extract the infrastructure ID
         inf_id = line.split()[0]
@@ -155,7 +139,7 @@ class Apricot_Magics(Magics):
         # Construct the command to retrieve log messages
         cmd_getcontmsg = [
             "python3",
-            im_client_path,
+            self.IM_CLIENT_PATH,
             "getcontmsg",
             inf_id,
             "-a",
@@ -182,8 +166,7 @@ class Apricot_Magics(Magics):
     @line_magic
     def apricot_ls(self, line):
         infrastructures_list = []
-        im_client_path = self.get_im_client_path()
-
+        
         base_dir = os.path.dirname(__file__)
         file_path = os.path.abspath(os.path.join(base_dir, '..', 'infrastructuresList.json'))
 
@@ -211,7 +194,7 @@ class Apricot_Magics(Magics):
 
             cmd_getstate = [
                 'python3',
-                im_client_path,
+                self.IM_CLIENT_PATH,
                 'getstate',
                 infrastructure_info['InfrastructureID'],
                 '-r',
@@ -238,7 +221,7 @@ class Apricot_Magics(Magics):
 
             cmd_getvminfo = [
                 'python3',
-                im_client_path,
+                self.IM_CLIENT_PATH,
                 'getvminfo',
                 infrastructure_info['InfrastructureID'],
                 '0',
@@ -281,8 +264,6 @@ class Apricot_Magics(Magics):
             print("Usage: apricot_info infrastructure-id\n")
             return "Fail"
 
-        im_client_path = self.get_im_client_path()
-
         # Split the input line to extract the infrastructure ID
         inf_id = line.split()[0]
 
@@ -296,7 +277,7 @@ class Apricot_Magics(Magics):
         # Construct the command to retrieve log messages
         cmd_getinfo = [
             "python3",
-            im_client_path,
+            self.IM_CLIENT_PATH,
             "getinfo",
             inf_id,
             "-a",
@@ -326,8 +307,6 @@ class Apricot_Magics(Magics):
             print("Usage: apricot_vmls infrastructure-id\n")
             return "Fail"
 
-        im_client_path = self.get_im_client_path()
-
         # Split the input line to extract the infrastructure ID
         inf_id = line.split()[0]
 
@@ -341,7 +320,7 @@ class Apricot_Magics(Magics):
 
         cmd_getinfo = [
             'python3',
-            im_client_path,
+            self.IM_CLIENT_PATH,
             'getinfo',
             inf_id,
             '-r',
@@ -575,7 +554,6 @@ class Apricot_Magics(Magics):
                 print("Usage: destroy infrastructure-id")
                 return "Fail"
             else:
-                im_client_path = self.get_im_client_path()
                 inf_id = words[1]
 
                 try:
@@ -586,7 +564,7 @@ class Apricot_Magics(Magics):
 
                 cmd_destroy = [
                     'python3',
-                    im_client_path,
+                    self.IM_CLIENT_PATH,
                     'destroy',
                     inf_id,
                     '-r',
