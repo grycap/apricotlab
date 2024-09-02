@@ -127,7 +127,7 @@ async function openDeploymentDialog(): Promise<void> {
     // Logic to handle form submission
     console.log('Form submitted');
   });
-};
+}
 
 const createButton = (
   label: string,
@@ -178,7 +178,7 @@ const addFormInput = (
 function getInputValue(inputId: string): string {
   const input = document.getElementById(inputId) as HTMLInputElement;
   return input.value;
-};
+}
 
 async function computeHash(input: string): Promise<string> {
   const msgUint8 = new TextEncoder().encode(input);
@@ -186,7 +186,7 @@ async function computeHash(input: string): Promise<string> {
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   return hashHex;
-};
+}
 
 async function generateIMCredentials(): Promise<void> {
   const randomInput = `${Date.now()}-${Math.random()}`;
@@ -196,7 +196,7 @@ async function generateIMCredentials(): Promise<void> {
   const pass = hash.substring(16, 32);
   deployInfo.IMuser = user;
   deployInfo.IMpass = pass;
-};
+}
 
 async function createImagesDropdown(
   output: string | undefined,
@@ -241,11 +241,10 @@ async function createImagesDropdown(
     });
 
     dialogBody.appendChild(select);
-
   } catch (error) {
     console.error('Error getting OS images:', error);
   }
-};
+}
 
 async function mergeTOSCARecipes(
   parsedConstantTemplate: any,
@@ -324,7 +323,7 @@ async function mergeTOSCARecipes(
     console.error('Error merging TOSCA recipes:', error);
     return JSON.parse(JSON.stringify(parsedConstantTemplate)); // Return a copy of the parsed constant template
   }
-};
+}
 
 async function createChildsForm(
   app: string,
@@ -418,7 +417,7 @@ async function createChildsForm(
     nodeTemplates,
     outputs
   };
-};
+}
 
 //*********************//
 //*   Bash commands   *//
@@ -466,7 +465,7 @@ async function selectImage(obj: IDeployInfo): Promise<string> {
 
   console.log('cmd', cmd);
   return cmd;
-};
+}
 
 const getEGIToken = async () => {
   const code = `%%bash
@@ -535,7 +534,7 @@ async function deployIMCommand(
 
   console.log('cmd', cmd);
   return cmd;
-};
+}
 
 async function saveToInfrastructureList(obj: IInfrastructureData) {
   const filePath = '$PWD/infrastructuresList.json';
@@ -550,7 +549,7 @@ async function saveToInfrastructureList(obj: IInfrastructureData) {
 
   console.log('Bash command:', cmd);
   return cmd;
-};
+}
 
 //****************//
 //*  Deployment  *//
@@ -564,13 +563,15 @@ generateIMCredentials().then(() => {
   );
 });
 
-getIMClientPath().then(path => {
-  process.env.IM_CLIENT_PATH = path;
-  imClientPath = path;
-  console.log('IM Client Path:', imClientPath);
-}).catch(error => {
-  console.error('Error getting IM Client Path:', error);
-});
+getIMClientPath()
+  .then(path => {
+    process.env.IM_CLIENT_PATH = path;
+    imClientPath = path;
+    console.log('IM Client Path:', imClientPath);
+  })
+  .catch(error => {
+    console.error('Error getting IM Client Path:', error);
+  });
 
 const deployChooseProvider = (dialogBody: HTMLElement): void => {
   // Clear dialog body
@@ -677,7 +678,6 @@ const createCheckboxesForChilds = async (
   dialogBody: HTMLElement,
   childs: string[]
 ): Promise<void> => {
-
   // Create paragraph element for checkboxes
   const paragraph = document.createElement('p');
   paragraph.textContent = 'Select optional recipe features:';
@@ -753,7 +753,6 @@ const createCheckboxesForChilds = async (
 const deployProviderCredentials = async (
   dialogBody: HTMLElement
 ): Promise<void> => {
-
   dialogBody.innerHTML = '';
   const form = document.createElement('form');
   dialogBody.appendChild(form);
@@ -854,7 +853,6 @@ const deployProviderCredentials = async (
 async function deployInfraConfiguration(
   dialogBody: HTMLElement
 ): Promise<void> {
-
   dialogBody.innerHTML = '';
   const form = document.createElement('form');
   dialogBody.appendChild(form);
@@ -950,12 +948,11 @@ async function deployInfraConfiguration(
 
   dialogBody.appendChild(backBtn);
   dialogBody.appendChild(nextBtn);
-};
+}
 
 const deployChildsConfiguration = async (
   dialogBody: HTMLElement
 ): Promise<void> => {
-
   // Clear dialog
   dialogBody.innerHTML = '';
 
@@ -1100,7 +1097,7 @@ async function deployFinalRecipe(
     console.error('Error during deployment:', error);
     deploying = false;
   }
-};
+}
 
 const handleFinalDeployOutput = async (
   output: string | undefined,
