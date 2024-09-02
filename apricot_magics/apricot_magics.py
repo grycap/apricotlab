@@ -10,25 +10,22 @@ class Apricot_Magics(Magics):
 
     def __init__(self, shell):
         super().__init__(shell)
-        self.IM_CLIENT_PATH = os.getenv("IM_CLIENT_PATH")
+        self.IM_CLIENT_PATH = '/usr/local/bin/im_client.py' # os.getenv("IM_CLIENT_PATH")
+        self.file_path = '../infrastructuresList.json'
 
     ########################
     #  Auxiliar functions  #
     ########################
 
     def create_auth_pipe(self, infrastructure_id):
-        # Get the absolute path to the infrastructuresList.json file
-        base_dir = os.path.dirname(__file__)
-        file_path = os.path.abspath(os.path.join(base_dir, '..', 'infrastructuresList.json'))
-
         # Read the JSON data from the file
         try:
-            with open(file_path) as f:
+            with open(self.file_path) as f:
                 data = json.load(f)
         except FileNotFoundError:
-            raise FileNotFoundError(f"File not found: {file_path}")
+            raise FileNotFoundError(f"File not found: {self.file_path}")
         except json.JSONDecodeError:
-            raise ValueError(f"Error decoding JSON from file: {file_path}")
+            raise ValueError(f"Error decoding JSON from file: {self.file_path}")
 
         # Find the infrastructure with the specified ID
         found_infrastructure = None
@@ -166,15 +163,11 @@ class Apricot_Magics(Magics):
     @line_magic
     def apricot_ls(self, line):
         infrastructures_list = []
-        
-        base_dir = os.path.dirname(__file__)
-        file_path = os.path.abspath(os.path.join(base_dir, '..', 'infrastructuresList.json'))
-
         try:
-            with open(file_path) as f:
+            with open(self.file_path) as f:
                 data = json.load(f)
         except FileNotFoundError:
-            print(f"File not found: {file_path}")
+            print(f"File not found: {self.file_path}")
             return
 
         # Iterate through each infrastructure
@@ -592,18 +585,14 @@ class Apricot_Magics(Magics):
                         return "Fail"
 
                     # Load infrastructure list from JSON file
-                    base_dir = os.path.dirname(__file__)
-                    file_path = os.path.abspath(os.path.join(base_dir, '..', 'infrastructuresList.json'))
-
-                    # Load infrastructure list from JSON file
                     try:
-                        with open(file_path, 'r') as f:
+                        with open(self.file_path, 'r') as f:
                             data = json.load(f)
                     except FileNotFoundError:
-                        print(f"File not found: {file_path}")
+                        print(f"File not found: {self.file_path}")
                         return "Failed"
                     except json.JSONDecodeError:
-                        print(f"Error decoding JSON from file: {file_path}")
+                        print(f"Error decoding JSON from file: {self.file_path}")
                         return "Failed"
 
                     # Find and remove the infrastructure with the specified ID
@@ -612,15 +601,12 @@ class Apricot_Magics(Magics):
                             data['infrastructures'].remove(infrastructure)
                             break
 
-                    base_dir = os.path.dirname(__file__)
-                    file_path = os.path.abspath(os.path.join(base_dir, '..', 'infrastructuresList.json'))
-
                     # Write the updated infrastructure list back to the JSON file
                     try:
-                        with open(file_path, 'w') as f:
+                        with open(self.file_path, 'w') as f:
                             json.dump(data, f, indent=4)
                     except IOError as e:
-                        print(f"Error writing to file {file_path}: {e}")
+                        print(f"Error writing to file {self.file_path}: {e}")
                         return "Failed"
 
                 except CalledProcessError as e:

@@ -4,26 +4,6 @@ import { KernelManager } from '@jupyterlab/services';
 import { Widget } from '@lumino/widgets';
 import { Dialog } from '@jupyterlab/apputils';
 import { executeKernelCommand, getIMClientPath } from './utils';
-import * as path from 'path';
-
-type UserInput = {
-  name: string;
-  inputs: {
-    [key: string]: {
-      description: string;
-      default: any;
-      value: any;
-    };
-  };
-  nodeTemplates: any;
-  outputs: any;
-};
-
-type ButtonConfig = {
-  text: string;
-  onClick: () => void;
-  className?: string;
-};
 
 interface IDeployInfo {
   IMuser: string;
@@ -51,13 +31,26 @@ interface IDeployInfo {
     [key: string]: number | string;
   };
   childs: string[];
-};
+}
 
 interface ITemplateInput {
   type: string;
   description: string;
   default: any;
   value?: any;
+}
+
+type UserInput = {
+  name: string;
+  inputs: {
+    [key: string]: {
+      description: string;
+      default: any;
+      value: any;
+    };
+  };
+  nodeTemplates: any;
+  outputs: any;
 };
 
 interface IInfrastructureData {
@@ -75,7 +68,7 @@ interface IInfrastructureData {
   domain: string;
   vo: string;
   EGIToken: string;
-};
+}
 
 const deployInfo: IDeployInfo = {
   IMuser: '',
@@ -107,7 +100,6 @@ const deployInfo: IDeployInfo = {
 let imageOptions: { uri: string; name: string }[] = [];
 
 let deploying = false; // Flag to prevent multiple deployments at the same time
-
 let imClientPath: string | undefined = undefined;
 
 //*****************//
@@ -137,28 +129,18 @@ async function openDeploymentDialog(): Promise<void> {
   });
 };
 
-const createDialogButtons = (
-  dialogBody: HTMLElement,
-  buttons: ButtonConfig[]
-): void => {
-  const buttonContainer = document.createElement('div');
-  buttonContainer.className = 'jp-Dialog-buttonBox'; // Ensure this class is correct
-
-  buttons.forEach(({ text, onClick, className }) => {
-    const button = document.createElement('button');
-    button.textContent = text;
-
-    // Apply JupyterLab button classes
-    button.className = 'jp-Button jp-mod-styled'; // Correct JupyterLab button classes
-    if (className) {
-      button.classList.add(className); // Additional custom classes
-    }
-
-    button.addEventListener('click', onClick);
-    buttonContainer.appendChild(button);
-  });
-
-  dialogBody.appendChild(buttonContainer);
+const createButton = (
+  label: string,
+  onClick: () => void
+): HTMLButtonElement => {
+  const button = document.createElement('button');
+  button.textContent = label;
+  button.addEventListener('click', onClick);
+  // Set an id for the "Next" button
+  if (label === 'Next') {
+    button.id = 'nextButton';
+  }
+  return button;
 };
 
 const clearDialogElements = (dialogBody: HTMLElement): void => {
@@ -225,7 +207,7 @@ async function createImagesDropdown(
     return;
   }
 
-  console.log('Original output:', output);
+  console.log('Images:', output);
 
   // Check if the output contains "error" in the message
   if (output.toLowerCase().includes('error')) {
@@ -260,7 +242,6 @@ async function createImagesDropdown(
 
     dialogBody.appendChild(select);
 
-    console.log('Output in deployInfraConfiguration:', output);
   } catch (error) {
     console.error('Error getting OS images:', error);
   }
@@ -511,8 +492,7 @@ async function deployIMCommand(
   mergedTemplate: string
 ): Promise<string> {
   const pipeAuth = `${obj.infName}-auth-pipe`;
-  const imClientPath = await getIMClientPath();
-  const templatePath = path.resolve(__dirname, '..', 'deployed-template.yaml');
+  const templatePath = '$PWD/deployed-template.yaml';
 
   let cmd = `%%bash
             PWD=$(pwd)
@@ -558,8 +538,7 @@ async function deployIMCommand(
 };
 
 async function saveToInfrastructureList(obj: IInfrastructureData) {
-  const filePath = path.resolve(__dirname, '..', 'infrastructuresList.json');
-
+  const filePath = '$PWD/infrastructuresList.json';
   // Construct the bash command
   const cmd = `
             %%bash
@@ -579,7 +558,7 @@ async function saveToInfrastructureList(obj: IInfrastructureData) {
 
 generateIMCredentials().then(() => {
   console.log(
-    'Generated random IM credentials:',
+    'Generated random IM credentials lol:',
     deployInfo.IMuser,
     deployInfo.IMpass
   );
@@ -640,8 +619,10 @@ const deployChooseProvider = (dialogBody: HTMLElement): void => {
 };
 
 const deployRecipeType = (dialogBody: HTMLElement): void => {
+  // Clear dialog body
   dialogBody.innerHTML = '';
 
+  // Create paragraph element for instructions
   const paragraph = document.createElement('p');
   paragraph.textContent = 'Select recipe type:';
   dialogBody.appendChild(paragraph);
@@ -675,34 +656,29 @@ const deployRecipeType = (dialogBody: HTMLElement): void => {
     }
   ];
 
-  // Create recipe buttons
-  const recipeButtons: ButtonConfig[] = recipes.map(recipe => ({
-    text: recipe.name,
-    onClick: () => {
+  // Create buttons for each recipe type
+  recipes.forEach(recipe => {
+    const button = createButton(recipe.name, () => {
       clearDialogElements(dialogBody);
       deployInfo.recipe = recipe.name;
       createCheckboxesForChilds(dialogBody, recipe.childs);
-    },
-    className: 'recipe-button'
-  }));
-
-  // Add the Back button
-  recipeButtons.push({
-    text: 'Back',
-    onClick: () => deployChooseProvider(dialogBody),
-    className: 'jp-mod-reject back-button'
+    });
+    button.classList.add('recipe-button');
+    dialogBody.appendChild(button);
   });
 
-  // Create buttons using the helper function
-  createDialogButtons(dialogBody, recipeButtons);
+  // Create a back button
+  const backBtn = createButton('Back', () => deployChooseProvider(dialogBody));
+  backBtn.classList.add('back-button');
+  dialogBody.appendChild(backBtn);
 };
 
 const createCheckboxesForChilds = async (
   dialogBody: HTMLElement,
   childs: string[]
 ): Promise<void> => {
-  dialogBody.innerHTML = '';
 
+  // Create paragraph element for checkboxes
   const paragraph = document.createElement('p');
   paragraph.textContent = 'Select optional recipe features:';
   dialogBody.appendChild(paragraph);
@@ -710,64 +686,75 @@ const createCheckboxesForChilds = async (
   // Create checkbox grid
   const ul = document.createElement('ul');
   ul.classList.add('checkbox-grid');
-  dialogBody.appendChild(ul);
 
   // Load YAML files and create checkboxes
   const contentsManager = new ContentsManager();
-  await Promise.all(
-    childs.map(async child => {
-      const file = await contentsManager.get(
-        `templates/${child.toLowerCase()}.yaml`
-      );
-      const parsedYaml: any = jsyaml.load(file.content as string);
-      const templateName = parsedYaml.metadata.template_name;
+  const promises = childs.map(async child => {
+    // Load YAML file asynchronously
+    const file = await contentsManager.get(
+      `templates/${child.toLowerCase()}.yaml`
+    );
+    const yamlContent = file.content as string;
 
-      const li = document.createElement('li');
-      // Create checkbox and its label
-      const checkbox = document.createElement('input');
-      checkbox.type = 'checkbox';
-      checkbox.id = `${child}-checkID`;
-      checkbox.name = child;
-      checkbox.value = templateName;
+    // Parse YAML content
+    const parsedYaml: any = jsyaml.load(yamlContent);
+    const templateName = parsedYaml.metadata.template_name;
 
-      const label = document.createElement('label');
-      label.htmlFor = child;
-      label.textContent = ` ${templateName}`;
+    // Create list item for checkbox
+    const li = document.createElement('li');
 
-      if (
-        (deployInfo.recipe === 'Slurm' && child === 'slurm_cluster') ||
-        (deployInfo.recipe === 'Kubernetes' && child === 'kubernetes')
-      ) {
-        checkbox.checked = true;
-        checkbox.disabled = true;
-      }
+    // Create checkbox
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.id = `${child}-checkID`;
+    checkbox.name = child;
+    checkbox.value = templateName;
 
-      li.appendChild(checkbox);
-      li.appendChild(label);
-      ul.appendChild(li);
-    })
-  );
+    // Create label for checkbox
+    const label = document.createElement('label');
+    label.htmlFor = child;
+    label.textContent = ` ${templateName}`;
 
-  createDialogButtons(dialogBody, [
-    {
-      text: 'Next',
-      onClick: () => {
-        // Populate deployInfo.childs
-        const selectedChilds = Array.from(
-          dialogBody.querySelectorAll('input[type="checkbox"]:checked')
-        ).map((checkbox: Element) => (checkbox as HTMLInputElement).name);
-        deployInfo.childs = selectedChilds;
-        deployProviderCredentials(dialogBody);
-      }
+    // Check if recipe is Slurm or Kubernetes
+    if (
+      (deployInfo.recipe === 'Slurm' && child === 'slurm_cluster') ||
+      (deployInfo.recipe === 'Kubernetes' && child === 'kubernetes')
+    ) {
+      checkbox.checked = true; // Check the checkbox
+      checkbox.disabled = true; // Disable the checkbox
     }
-  ]);
+
+    // Append checkbox and label to list item
+    li.appendChild(checkbox);
+    li.appendChild(label);
+
+    // Append list item to checkbox grid
+    ul.appendChild(li);
+  });
+
+  await Promise.all(promises);
+
+  // Append checkbox grid to dialog body
+  dialogBody.appendChild(ul);
+
+  // Create "Next" button
+  const nextButton = createButton('Next', () => {
+    // Populate deployInfo.childs
+    const selectedChilds = Array.from(
+      dialogBody.querySelectorAll('input[type="checkbox"]:checked')
+    ).map((checkbox: Element) => (checkbox as HTMLInputElement).name);
+    deployInfo.childs = selectedChilds;
+    deployProviderCredentials(dialogBody);
+  });
+
+  dialogBody.appendChild(nextButton);
 };
 
 const deployProviderCredentials = async (
   dialogBody: HTMLElement
 ): Promise<void> => {
-  dialogBody.innerHTML = '';
 
+  dialogBody.innerHTML = '';
   const form = document.createElement('form');
   dialogBody.appendChild(form);
 
@@ -825,57 +812,50 @@ const deployProviderCredentials = async (
 
   form.insertAdjacentHTML('afterbegin', text);
 
-  createDialogButtons(dialogBody, [
-    {
-      text: 'Back',
-      onClick: () => deployRecipeType(dialogBody),
-      className: 'jp-mod-reject back-button'
-    },
-    {
-      text: 'Next',
-      onClick: async () => {
-        switch (deployInfo.deploymentType) {
-          case 'EC2': {
-            const region = getInputValue('region');
-            const AMI = getInputValue('amiIn');
-            const imageURL = 'aws://' + region + '/' + AMI;
-            deployInfo.worker.image = imageURL;
-            deployInfo.username = getInputValue('accessKeyId');
-            deployInfo.password = getInputValue('secretAccessKey');
-            break;
-          }
-
-          case 'OpenNebula':
-          case 'OpenStack':
-            deployInfo.username = getInputValue('username');
-            deployInfo.password = getInputValue('password');
-            deployInfo.host = getInputValue('host');
-            if (deployInfo.deploymentType === 'OpenStack') {
-              deployInfo.tenant = getInputValue('tenant');
-              deployInfo.domain = getInputValue('domain');
-              deployInfo.authVersion = getInputValue('authVersion');
-            }
-            break;
-
-          case 'EGI':
-            deployInfo.host = getInputValue('site');
-            deployInfo.vo = getInputValue('vo');
-            deployInfo.EGIToken = await getEGIToken();
-            console.log('EGI Token:', deployInfo.EGIToken);
-            break;
-        }
-
-        deployInfraConfiguration(dialogBody);
+  const backBtn = createButton('Back', () => deployRecipeType(dialogBody));
+  const nextButton = createButton('Next', async () => {
+    switch (deployInfo.deploymentType) {
+      case 'EC2': {
+        const region = getInputValue('region');
+        const AMI = getInputValue('amiIn');
+        const imageURL = 'aws://' + region + '/' + AMI;
+        deployInfo.worker.image = imageURL;
+        deployInfo.username = getInputValue('accessKeyId');
+        deployInfo.password = getInputValue('secretAccessKey');
+        break;
       }
+
+      case 'OpenNebula':
+      case 'OpenStack':
+        deployInfo.username = getInputValue('username');
+        deployInfo.password = getInputValue('password');
+        deployInfo.host = getInputValue('host');
+        if (deployInfo.deploymentType === 'OpenStack') {
+          deployInfo.tenant = getInputValue('tenant');
+          deployInfo.domain = getInputValue('domain');
+          deployInfo.authVersion = getInputValue('authVersion');
+        }
+        break;
+
+      case 'EGI':
+        deployInfo.host = getInputValue('site');
+        deployInfo.vo = getInputValue('vo');
+        deployInfo.EGIToken = await getEGIToken();
+        console.log('EGI Token:', deployInfo.EGIToken);
+        break;
     }
-  ]);
+
+    deployInfraConfiguration(dialogBody);
+  });
+  dialogBody.appendChild(backBtn);
+  dialogBody.appendChild(nextButton);
 };
 
 async function deployInfraConfiguration(
   dialogBody: HTMLElement
 ): Promise<void> {
-  dialogBody.innerHTML = '';
 
+  dialogBody.innerHTML = '';
   const form = document.createElement('form');
   dialogBody.appendChild(form);
 
@@ -922,8 +902,11 @@ async function deployInfraConfiguration(
   );
 
   if (deployInfo.deploymentType !== 'EC2') {
+    // Create select image command
     const cmdImageNames = await selectImage(deployInfo);
+
     try {
+      // Execute the deployment command
       await executeKernelCommand(cmdImageNames, async outputText => {
         await createImagesDropdown(outputText, dialogBody);
       });
@@ -933,69 +916,47 @@ async function deployInfraConfiguration(
     }
   }
 
-  createDialogButtons(dialogBody, [
-    {
-      text: 'Back',
-      onClick: () => deployProviderCredentials(dialogBody),
-      className: 'back-button'
-    },
-    {
-      text: deployInfo.childs.length === 0 ? 'Deploy' : 'Next',
-      onClick: () => {
-        const selectedImageElement = document.getElementById(
-          'imageDropdown'
-        ) as HTMLSelectElement;
-        const selectedImageUri = selectedImageElement
-          ? selectedImageElement.value
-          : '';
+  const backBtn = createButton('Back', () =>
+    deployProviderCredentials(dialogBody)
+  );
+  const nextBtn = createButton(
+    deployInfo.childs.length === 0 ? 'Deploy' : 'Next',
+    () => {
+      const selectedImageUri = (
+        document.getElementById('imageDropdown') as HTMLSelectElement
+      ).value;
 
-        // Validate the selected image and other form inputs
-        const isValid = [
-          selectedImageUri,
-          getInputValue('infrastructureName'),
-          getInputValue('infrastructureWorkers'),
-          getInputValue('infrastructureCPUs'),
-          getInputValue('infrastructureMem'),
-          getInputValue('infrastructureDiskSize'),
-          getInputValue('infrastructureGPUs')
-        ].every(
-          value => value !== null && value !== '' && value !== 'undefined'
-        );
+      deployInfo.infName = getInputValue('infrastructureName');
+      deployInfo.worker.num_instances = parseInt(
+        getInputValue('infrastructureWorkers')
+      );
+      deployInfo.worker.num_cpus = parseInt(
+        getInputValue('infrastructureCPUs')
+      );
+      deployInfo.worker.mem_size = getInputValue('infrastructureMem');
+      deployInfo.worker.disk_size = getInputValue('infrastructureDiskSize');
+      deployInfo.worker.num_gpus = parseInt(
+        getInputValue('infrastructureGPUs')
+      );
+      deployInfo.worker.image = selectedImageUri;
 
-        if (!isValid || selectedImageUri === '') {
-          alert(
-            'The infrastructure is not well configured. Please check all fields and try again.'
-          );
-          return;
-        }
-
-        deployInfo.infName = getInputValue('infrastructureName');
-        deployInfo.worker.num_instances = parseInt(
-          getInputValue('infrastructureWorkers')
-        );
-        deployInfo.worker.num_cpus = parseInt(
-          getInputValue('infrastructureCPUs')
-        );
-        deployInfo.worker.mem_size = getInputValue('infrastructureMem');
-        deployInfo.worker.disk_size = getInputValue('infrastructureDiskSize');
-        deployInfo.worker.num_gpus = parseInt(
-          getInputValue('infrastructureGPUs')
-        );
-        deployInfo.worker.image = selectedImageUri;
-
-        if (deployInfo.childs.length === 0) {
-          deployFinalRecipe(dialogBody);
-        } else {
-          deployChildsConfiguration(dialogBody);
-        }
+      if (deployInfo.childs.length === 0) {
+        deployFinalRecipe(dialogBody);
+      } else {
+        deployChildsConfiguration(dialogBody);
       }
     }
-  ]);
-}
+  );
+
+  dialogBody.appendChild(backBtn);
+  dialogBody.appendChild(nextBtn);
+};
 
 const deployChildsConfiguration = async (
   dialogBody: HTMLElement
 ): Promise<void> => {
+
+  // Clear dialog
   dialogBody.innerHTML = '';
 
   const childs = deployInfo.childs;
@@ -1005,84 +966,79 @@ const deployChildsConfiguration = async (
   buttonsContainer.id = 'buttons-container';
   dialogBody.appendChild(buttonsContainer);
 
-  // Create forms for each child
   const forms = await Promise.all(
     childs.map((app, index) =>
       createChildsForm(app, index, dialogBody, buttonsContainer)
     )
   );
 
-  createDialogButtons(dialogBody, [
-    {
-      text: 'Back',
-      onClick: () => deployInfraConfiguration(dialogBody),
-      className: 'jp-mod-reject back-button'
-    },
-    {
-      text: 'Deploy',
-      onClick: async () => {
-        const contentsManager = new ContentsManager();
-        const userInputs = (
-          await Promise.all(
-            forms.map(async formData => {
-              const form = formData.form;
-              const childName = form.id.replace('form-', '');
+  const nodeTemplates = forms.map(form => form.nodeTemplates);
+  const outputs = forms.map(form => form.outputs);
 
-              // Fetch YAML content
-              const file = await contentsManager.get(
-                `templates/${childName}.yaml`
+  const backBtn = createButton('Back', () =>
+    deployInfraConfiguration(dialogBody)
+  );
+  const nextButton = createButton('Deploy', async () => {
+    const contentsManager = new ContentsManager();
+    const userInputs = (
+      await Promise.all(
+        forms.map(async formData => {
+          const form = formData.form;
+          const childName = form.id.replace('form-', '');
+
+          // Fetch YAML content
+          const file = await contentsManager.get(`templates/${childName}.yaml`);
+          const yamlContent = file.content as string;
+          const yamlData: any = jsyaml.load(yamlContent);
+          const recipeInputs = yamlData.topology_template.inputs;
+
+          // Check if recipeInputs is not null or undefined
+          if (recipeInputs) {
+            // Create an object to hold input structure and values
+            const inputsWithValues: {
+              [key: string]: {
+                description: string;
+                default: any;
+                value: any;
+              };
+            } = {};
+            Object.entries(recipeInputs).forEach(([inputName, input]) => {
+              const defaultValue = (input as any).default || '';
+              const inputElement = form.querySelector<HTMLInputElement>(
+                `[name="${inputName}"]`
               );
-              const yamlContent = file.content as string;
-              const yamlData: any = jsyaml.load(yamlContent);
-              const recipeInputs = yamlData.topology_template.inputs;
-              const nodeTemplates = yamlData.topology_template.node_templates; // Get node templates
-              const outputs = yamlData.topology_template.outputs; // Get outputs
+              const userInput = inputElement ? inputElement.value : ''; // Handle null case
+              inputsWithValues[inputName] = {
+                description: (input as any).description,
+                default: defaultValue,
+                value: userInput
+              };
+            });
 
-              // Check if recipeInputs is not null or undefined
-              if (recipeInputs) {
-                // Create an object to hold input structure and values
-                const inputsWithValues: {
-                  [key: string]: {
-                    description: string;
-                    default: any;
-                    value: any;
-                  };
-                } = {};
-                Object.entries(recipeInputs).forEach(([inputName, input]) => {
-                  const defaultValue = (input as any).default || '';
-                  const inputElement = form.querySelector<HTMLInputElement>(
-                    `[name="${inputName}"]`
-                  );
-                  const userInput = inputElement ? inputElement.value : '';
-                  inputsWithValues[inputName] = {
-                    description: (input as any).description,
-                    default: defaultValue,
-                    value: userInput
-                  };
-                });
+            // Return the outputs to create final recipe to deploy
+            return {
+              name: childName,
+              inputs: inputsWithValues,
+              nodeTemplates: formData.nodeTemplates,
+              outputs: formData.outputs
+            };
+          } else {
+            // Handle case where recipeInputs is null or undefined
+            console.error(
+              `Error: recipeInputs is null or undefined for ${childName}.yaml`
+            );
+            return null; // or handle the error in another appropriate way
+          }
+        })
+      )
+    ).filter((input): input is UserInput => input !== null); // Filter out null values
 
-                // Return the outputs to create final recipe to deploy
-                return {
-                  name: childName,
-                  inputs: inputsWithValues,
-                  nodeTemplates,
-                  outputs
-                } as UserInput;
-              } else {
-                console.error(
-                  `Error: recipeInputs is null or undefined for ${childName}.yaml`
-                );
-                return null;
-              }
-            })
-          )
-        ).filter((input): input is UserInput => input !== null);
+    deployFinalRecipe(dialogBody, userInputs, nodeTemplates, outputs);
+  });
 
-        deployFinalRecipe(dialogBody, userInputs);
-      },
-      className: 'next-button'
-    }
-  ]);
+  // Set dialog buttons
+  dialogBody.appendChild(backBtn);
+  dialogBody.appendChild(nextButton);
 };
 
 async function deployFinalRecipe(
