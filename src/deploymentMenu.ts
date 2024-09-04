@@ -3,7 +3,7 @@ import { ContentsManager } from '@jupyterlab/services';
 import { KernelManager } from '@jupyterlab/services';
 import { Widget } from '@lumino/widgets';
 import { Dialog } from '@jupyterlab/apputils';
-import { executeKernelCommand, getIMClientPath } from './utils';
+import { executeKernelCommand, getIMClientPath, getInfrastructuresListPath, getDeployedTemplatePath } from './utils';
 
 interface IDeployInfo {
   IMuser: string;
@@ -100,7 +100,9 @@ const deployInfo: IDeployInfo = {
 let imageOptions: { uri: string; name: string }[] = [];
 
 let deploying = false; // Flag to prevent multiple deployments at the same time
-let imClientPath: string | undefined = undefined;
+let imClientPath: string;
+let infrastructuresListPath: string;
+let deployedTemplatesPath: string;
 
 //*****************//
 //* Aux functions *//
@@ -557,7 +559,7 @@ async function saveToInfrastructureList(obj: IInfrastructureData) {
 
 generateIMCredentials().then(() => {
   console.log(
-    'Generated random IM credentials lol:',
+    'Generated random IM credentials:',
     deployInfo.IMuser,
     deployInfo.IMpass
   );
@@ -571,6 +573,20 @@ getIMClientPath()
   })
   .catch(error => {
     console.error('Error getting IM Client Path:', error);
+  });
+
+getInfrastructuresListPath()
+  .then(path => {
+    process.env.INFRASTRUCTURES_LIST_PATH = infrastructuresListPath;
+    infrastructuresListPath = path;
+    console.log('Infrastructures List Path:', infrastructuresListPath);
+  });
+
+  getDeployedTemplatePath()
+  .then(path => {
+    process.env.DEPLOYED_TEMPLATE_PATH = deployedTemplatesPath;
+    deployedTemplatesPath = path;
+    console.log('Deployed Template Path:', deployedTemplatesPath);
   });
 
 const deployChooseProvider = (dialogBody: HTMLElement): void => {
