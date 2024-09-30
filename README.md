@@ -31,7 +31,7 @@ APRICOT has been constructed using the following components:
 - [**Jupyter**](https://jupyter.org/), an open-source web application that allows you to create and share documents that contain live code, equations, visualizations and narrative text.
 - [**IM**](https://www.grycap.upv.es/im/index.php), an open-source virtual infrastructure provisioning tool for multi-Clouds.
 
-### Infrastructure management
+## Infrastructure management
 
 To manage and use previous deployed infrastructures within Jupyter notebook environment, a set of Ipython magic functions have been implemented. These functions are listed below:
 
@@ -58,7 +58,7 @@ To manage and use previous deployed infrastructures within Jupyter notebook envi
 
 Like any Jupyter magics, these must be lodaded at the notebook using _%reload_ext apricot_magic_ or configure jupyter to load these magics in all notebooks.
 
-### Docker
+## Docker
 
 A Dockerfile has been provided to construct a docker image with Jupyter and APRICOT configured. Use
 
@@ -70,7 +70,7 @@ to build the image. Then, use
 
 to create and execute a container. The container will start automatically a Jupyter server with APRICOT preconfigured. Then, use the url provided by Jupyter to access to the server.
 
-### Development install
+## Development install
 
 Note: You will need NodeJS to build the extension package.
 
@@ -106,7 +106,7 @@ By default, the `jlpm build` command generates the source maps for this extensio
 jupyter lab build --minimize=False
 ```
 
-### Development uninstall
+## Development uninstall
 
 ```bash
 pip uninstall apricot
@@ -116,6 +116,6 @@ In development mode, you will also need to remove the symlink created by `jupyte
 command. To find its location, you can run `jupyter labextension list` to figure out where the `labextensions`
 folder is located. Then you can remove the symlink named `apricot` within that folder.
 
-### Packaging the extension
+## Packaging the extension
 
 See [RELEASE](RELEASE.md)

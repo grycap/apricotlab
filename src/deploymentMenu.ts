@@ -211,8 +211,6 @@ async function createImagesDropdown(
     return;
   }
 
-  console.log('Images:', output);
-
   // Check if the output contains "error" in the message
   if (output.toLowerCase().includes('error')) {
     alert(output);
@@ -226,7 +224,6 @@ async function createImagesDropdown(
   }
 
   const jsonOutput = output.substring(jsonStartIndex).trim();
-  console.log('JSON output:', jsonOutput);
 
   try {
     const images: { uri: string; name: string }[] = JSON.parse(jsonOutput);
@@ -444,7 +441,7 @@ async function selectImage(obj: IDeployInfo): Promise<string> {
             mkdir -p $PWD/templates &> /dev/null
             # Create pipes
             mkfifo $PWD/${pipeAuth}
-        `;
+         `;
 
   // Command to create the IM-cli credentials
   let authContent = `id = im; type = InfrastructureManager; username = ${obj.IMuser}; password = ${obj.IMpass};\n`;
@@ -479,9 +476,9 @@ async function selectImage(obj: IDeployInfo): Promise<string> {
 
 const getEGIToken = async () => {
   const code = `%%bash
-            TOKEN=$(cat /var/run/secrets/egi.eu/access_token)
-            echo $TOKEN
-        `;
+                TOKEN=$(cat /var/run/secrets/egi.eu/access_token)
+                echo $TOKEN
+             `;
   const kernelManager = new KernelManager();
   const kernel = await kernelManager.startNew();
   const future = kernel.requestExecute({ code });
@@ -514,7 +511,7 @@ async function deployIMCommand(
             mkfifo $PWD/${pipeAuth}
             # Save mergedTemplate as a YAML file
             echo '${mergedTemplate}' > ${deployedTemplatePath}
-        `;
+          `;
 
   // Command to create the IM-cli credentials
   let authContent = `id = im; type = InfrastructureManager; username = ${obj.IMuser}; password = ${obj.IMpass};\n`;
@@ -543,22 +540,21 @@ async function deployIMCommand(
             fi
             `;
 
-  console.log('cmd', cmd);
+  console.log('TOSCA recipe deployed:', cmd);
   return cmd;
 }
 
 async function saveToInfrastructureList(obj: IInfrastructureData) {
   const infrastructuresListPath = await getInfrastructuresListPath();
   // Construct the bash command
-  const cmd = `
-            %%bash
-            PWD=$(pwd)
-            existingJson=$(cat ${infrastructuresListPath})
-            newJson=$(echo "$existingJson" | jq -c '.infrastructures += [${JSON.stringify(obj)}]')
-            echo "$newJson" > ${infrastructuresListPath}
-        `;
+  const cmd = `%%bash
+              PWD=$(pwd)
+              existingJson=$(cat ${infrastructuresListPath})
+              newJson=$(echo "$existingJson" | jq -c '.infrastructures += [${JSON.stringify(obj)}]')
+              echo "$newJson" > ${infrastructuresListPath}
+           `;
 
-  console.log('Bash command:', cmd);
+  console.log('Credentials saved to infrastructuresList.json:', cmd);
   return cmd;
 }
 
