@@ -1,6 +1,7 @@
 from tabulate import tabulate
 from IPython.core.magic import Magics, line_magic, line_cell_magic, magics_class
 from subprocess import run, PIPE, CalledProcessError
+from pathlib import Path
 
 import os
 import json
@@ -10,8 +11,7 @@ class Apricot_Magics(Magics):
 
     def __init__(self, shell):
         super().__init__(shell)
-        self.IM_CLIENT_PATH = '/usr/local/bin/im_client.py' # os.getenv("IM_CLIENT_PATH")
-        self.file_path = '../infrastructuresList.json'
+        self.load_paths()
 
     ########################
     #  Auxiliar functions  #
@@ -20,12 +20,12 @@ class Apricot_Magics(Magics):
     def create_auth_pipe(self, infrastructure_id):
         # Read the JSON data from the file
         try:
-            with open(self.file_path) as f:
+            with open(self.inf_list_path) as f:
                 data = json.load(f)
         except FileNotFoundError:
-            raise FileNotFoundError(f"File not found: {self.file_path}")
+            raise FileNotFoundError(f"File not found: {self.inf_list_path}")
         except json.JSONDecodeError:
-            raise ValueError(f"Error decoding JSON from file: {self.file_path}")
+            raise ValueError(f"Error decoding JSON from file: {self.inf_list_path}")
 
         # Find the infrastructure with the specified ID
         found_infrastructure = None
@@ -61,11 +61,10 @@ class Apricot_Magics(Magics):
         ##########################################
         private_key_content = None
         host_ip = None
-        im_client_path = self.get_im_client_path()
 
         cmd_getvminfo = [
             'python3',
-            im_client_path,
+            self.im_client_path,
             'getvminfo',
             infrastructure_id,
             vm_id,
@@ -113,6 +112,39 @@ class Apricot_Magics(Magics):
             # If the subprocess call fails, return the error output
             return None, None
 
+    def load_paths(self):
+        # Get the absolute path to the current file (apricot_magics.py)
+        current_dir = Path(__file__).parent
+
+        # Construct the path to the 'resources' folder relative to 'apricot_magics/'
+        resources_dir = current_dir.parent / "resources"
+
+        self.inf_list_path = resources_dir / "infrastructuresList.json"
+        self.deployedTemplate_path = resources_dir / "deployed-template.yaml"
+
+        # Check if the files exist
+        if not self.inf_list_path.exists():
+            raise FileNotFoundError(f"File not found: {self.inf_list_path}")
+        if not self.deployedTemplate_path.exists():
+            raise FileNotFoundError(f"File not found: {self.deployedTemplate_path}")
+        
+        self.im_client_path = self.find_im_client()
+
+        if not self.im_client_path:
+            raise FileNotFoundError("im_client.py executable not found in PATH")
+
+    def find_im_client(self) -> str:
+        """Find the 'im_client.py' executable in the system's PATH using the 'which' command."""
+        executable_name = "im_client.py"
+        try:
+            # Use 'which' command to find the executable
+            result = run(['which', executable_name], stdout=PIPE, stderr=PIPE, check=True, text=True)
+            executable_path = result.stdout.strip()
+            return executable_path
+        except (CalledProcessError, FileNotFoundError):
+            # Return None if the executable is not found
+            return None
+
     ##################
     #     Magics     #
     ##################
@@ -136,7 +168,7 @@ class Apricot_Magics(Magics):
         # Construct the command to retrieve log messages
         cmd_getcontmsg = [
             "python3",
-            self.IM_CLIENT_PATH,
+            self.im_client_path,
             "getcontmsg",
             inf_id,
             "-a",
@@ -163,11 +195,12 @@ class Apricot_Magics(Magics):
     @line_magic
     def apricot_ls(self, line):
         infrastructures_list = []
+
         try:
-            with open(self.file_path) as f:
+            with open(self.inf_list_path) as f:
                 data = json.load(f)
         except FileNotFoundError:
-            print(f"File not found: {self.file_path}")
+            print(f"File not found: {self.inf_list_path}")
             return
 
         # Iterate through each infrastructure
@@ -187,7 +220,7 @@ class Apricot_Magics(Magics):
 
             cmd_getstate = [
                 'python3',
-                self.IM_CLIENT_PATH,
+                self.im_client_path,
                 'getstate',
                 infrastructure_info['InfrastructureID'],
                 '-r',
@@ -214,7 +247,7 @@ class Apricot_Magics(Magics):
 
             cmd_getvminfo = [
                 'python3',
-                self.IM_CLIENT_PATH,
+                self.im_client_path,
                 'getvminfo',
                 infrastructure_info['InfrastructureID'],
                 '0',
@@ -270,7 +303,7 @@ class Apricot_Magics(Magics):
         # Construct the command to retrieve log messages
         cmd_getinfo = [
             "python3",
-            self.IM_CLIENT_PATH,
+            self.im_client_path,
             "getinfo",
             inf_id,
             "-a",
@@ -313,7 +346,7 @@ class Apricot_Magics(Magics):
 
         cmd_getinfo = [
             'python3',
-            self.IM_CLIENT_PATH,
+            self.im_client_path,
             'getinfo',
             inf_id,
             '-r',
@@ -557,7 +590,7 @@ class Apricot_Magics(Magics):
 
                 cmd_destroy = [
                     'python3',
-                    self.IM_CLIENT_PATH,
+                    self.im_client_path,
                     'destroy',
                     inf_id,
                     '-r',
@@ -586,13 +619,13 @@ class Apricot_Magics(Magics):
 
                     # Load infrastructure list from JSON file
                     try:
-                        with open(self.file_path, 'r') as f:
+                        with open(self.inf_list_path, 'r') as f:
                             data = json.load(f)
                     except FileNotFoundError:
-                        print(f"File not found: {self.file_path}")
+                        print(f"File not found: {self.inf_list_path}")
                         return "Failed"
                     except json.JSONDecodeError:
-                        print(f"Error decoding JSON from file: {self.file_path}")
+                        print(f"Error decoding JSON from file: {self.inf_list_path}")
                         return "Failed"
 
                     # Find and remove the infrastructure with the specified ID
@@ -603,10 +636,10 @@ class Apricot_Magics(Magics):
 
                     # Write the updated infrastructure list back to the JSON file
                     try:
-                        with open(self.file_path, 'w') as f:
+                        with open(self.inf_list_path, 'w') as f:
                             json.dump(data, f, indent=4)
                     except IOError as e:
-                        print(f"Error writing to file {self.file_path}: {e}")
+                        print(f"Error writing to file {self.inf_list_path}: {e}")
                         return "Failed"
 
                 except CalledProcessError as e:
