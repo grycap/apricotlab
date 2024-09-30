@@ -66,8 +66,9 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
 
   try {
     // Read the contents of infrastructuresList.json
-    const cmdReadJson = `%%bash cat "${infrastructuresListPath}"
-`;
+    const cmdReadJson = `%%bash
+                        cat "${infrastructuresListPath}"
+                      `;
     const futureReadJson = kernel.requestExecute({ code: cmdReadJson });
 
     futureReadJson.onIOPub = msg => {
@@ -228,25 +229,25 @@ async function infrastructureState(
   }
 
   const cmd = `%%bash
-          PWD=$(pwd)
-          # Remove pipes if they exist
-          rm -f $PWD/${pipeAuth} &> /dev/null
-          # Create pipes
-          mkfifo $PWD/${pipeAuth}
-          # Command to create the infrastructure manager client credentials
-          echo -e "${authContent}" > $PWD/${pipeAuth} &
+              PWD=$(pwd)
+              # Remove pipes if they exist
+              rm -f $PWD/${pipeAuth} &> /dev/null
+              # Create pipes
+              mkfifo $PWD/${pipeAuth}
+              # Command to create the infrastructure manager client credentials
+              echo -e "${authContent}" > $PWD/${pipeAuth} &
 
-          stateOut=$(python3 ${imClientPath} getstate ${infrastructureID} -r https://im.egi.eu/im -a $PWD/${pipeAuth})
-          # Remove pipe
-          rm -f $PWD/${pipeAuth} &> /dev/null
-          # Print state output on stderr or stdout
-          if [ $? -ne 0 ]; then
-              >&2 echo -e $stateOut
-              exit 1
-          else
-              echo -e $stateOut
-          fi
-          `;
+              stateOut=$(python3 ${imClientPath} getstate ${infrastructureID} -r https://im.egi.eu/im -a $PWD/${pipeAuth})
+              # Remove pipe
+              rm -f $PWD/${pipeAuth} &> /dev/null
+              # Print state output on stderr or stdout
+              if [ $? -ne 0 ]; then
+                  >&2 echo -e $stateOut
+                  exit 1
+              else
+                  echo -e $stateOut
+              fi
+            `;
 
   console.log('cmdState', cmd);
   return cmd;
@@ -294,25 +295,25 @@ async function infrastructureIP(
   }
 
   const cmd = `%%bash
-          PWD=$(pwd)
-          # Remove pipes if they exist
-          rm -f $PWD/${pipeAuth} &> /dev/null
-          # Create pipes
-          mkfifo $PWD/${pipeAuth}
-          # Command to create the infrastructure manager client credentials
-          echo -e "${authContent}" > $PWD/${pipeAuth} &
+              PWD=$(pwd)
+              # Remove pipes if they exist
+              rm -f $PWD/${pipeAuth} &> /dev/null
+              # Create pipes
+              mkfifo $PWD/${pipeAuth}
+              # Command to create the infrastructure manager client credentials
+              echo -e "${authContent}" > $PWD/${pipeAuth} &
 
-          stateOut=$(python3 ${imClientPath} getvminfo ${infrastructureID} 0 net_interface.1.ip -r https://im.egi.eu/im -a $PWD/${pipeAuth})
-          # Remove pipe
-          rm -f $PWD/${pipeAuth} &> /dev/null
-          # Print state output on stderr or stdout
-          if [ $? -ne 0 ]; then
-              >&2 echo -e $stateOut
-              exit 1
-          else
-              echo -e $stateOut
-          fi
-          `;
+              stateOut=$(python3 ${imClientPath} getvminfo ${infrastructureID} 0 net_interface.1.ip -r https://im.egi.eu/im -a $PWD/${pipeAuth})
+              # Remove pipe
+              rm -f $PWD/${pipeAuth} &> /dev/null
+              # Print state output on stderr or stdout
+              if [ $? -ne 0 ]; then
+                  >&2 echo -e $stateOut
+                  exit 1
+              else
+                  echo -e $stateOut
+              fi
+            `;
 
   console.log('cmdState', cmd);
   return cmd;

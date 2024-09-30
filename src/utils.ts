@@ -33,7 +33,10 @@ export async function executeKernelCommand(
 
 export async function getIMClientPath(): Promise<string> {
   return new Promise((resolve, reject) => {
-    const cmdIMClientPath = '%%bash\n' + 'which im_client.py';
+    const cmdIMClientPath = `
+      %%bash
+      which im_client.py
+    `;
 
     executeKernelCommand(cmdIMClientPath, output => {
       if (output.trim()) {
@@ -93,7 +96,8 @@ export async function getInfrastructuresListPath(): Promise<string> {
 
 export async function getDeployableTemplatesPath(): Promise<string> {
   return new Promise((resolve, reject) => {
-    const cmdTemplatesPath = `%%bash\n
+    const cmdTemplatesPath = `
+      %%bash
       realpath --relative-to="$(pwd)" resources/deployable_templates
     `;
 
@@ -110,44 +114,3 @@ export async function getDeployableTemplatesPath(): Promise<string> {
     }).catch(reject);
   });
 }
-
-// // Function to batch run commands in parallel
-// export async function getPathsInParallel(): Promise<{
-//   imClientPath: string;
-//   infrastructuresListPath: string;
-//   deployedTemplatePath: string;
-//   templatesPath: string;
-// }> {
-//   try {
-//     const [imClientPath, infrastructuresListPath, deployedTemplatePath, templatesPath] = await Promise.all([
-//       getIMClientPath(),
-//       getInfrastructuresListPath(),
-//       getDeployedTemplatePath(),
-//       getTemplatesPath(),
-//     ]);
-
-//     return {
-//       imClientPath,
-//       infrastructuresListPath,
-//       deployedTemplatePath,
-//       templatesPath,
-//     };
-//   } catch (error) {
-//     console.error('Error getting paths in parallel:', error);
-//     throw error;
-//   }
-// }
-
-// Function to get the infrastructures list path
-// export async function getCurrentWorkingDirectory(): Promise<string> {
-//   return new Promise((resolve, reject) => {
-//     const cmdCurrentDir = `
-//       %%bash
-//       pwd
-//     `;
-
-//     executeKernelCommand(cmdCurrentDir, (output) => {
-//       resolve(output.trim());
-//     }).catch(reject);
-//   });
-// }
