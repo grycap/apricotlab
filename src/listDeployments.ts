@@ -1,7 +1,7 @@
 import { KernelManager } from '@jupyterlab/services';
 import { Dialog } from '@jupyterlab/apputils';
 import { Widget } from '@lumino/widgets';
-import { getIMClientPath } from './utils';
+import { getInfrastructuresListPath, getIMClientPath } from './utils';
 
 interface IInfrastructure {
   IMuser: string;
@@ -59,15 +59,15 @@ function createTable(): HTMLTableElement {
 
 async function populateTable(table: HTMLTableElement): Promise<void> {
   let jsonData: string | null = null;
-
+  const infrastructuresListPath = await getInfrastructuresListPath();
   // Kernel manager to execute the bash command
   const kernelManager = new KernelManager();
   const kernel = await kernelManager.startNew();
 
   try {
     // Read the contents of infrastructuresList.json
-    const cmdReadJson = '%%bash\n' + 'cat $PWD/infrastructuresList.json';
-
+    const cmdReadJson = `%%bash cat "${infrastructuresListPath}"
+`;
     const futureReadJson = kernel.requestExecute({ code: cmdReadJson });
 
     futureReadJson.onIOPub = msg => {
@@ -318,5 +318,4 @@ async function infrastructureIP(
   return cmd;
 }
 
-// Exporting the function that initiates the dialog
 export { openListDeploymentsDialog };
