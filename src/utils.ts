@@ -1,15 +1,26 @@
 import { KernelManager } from '@jupyterlab/services';
 
+let kernelManager: KernelManager | null = null;
+let kernel: any | null = null;
+
+// Get or start a new kernel (reused across all executions)
+async function getOrStartKernel() {
+  if (!kernelManager || !kernel) {
+    kernelManager = new KernelManager();
+    kernel = await kernelManager.startNew();
+  }
+  return kernel;
+}
+
 export async function executeKernelCommand(
   command: string,
   callback: (output: string) => void
 ): Promise<void> {
   try {
-    const kernelManager = new KernelManager();
-    const kernel = await kernelManager.startNew();
+    const kernel = await getOrStartKernel();
     const future = kernel.requestExecute({ code: command });
 
-    future.onIOPub = msg => {
+    future.onIOPub = (msg: any) => {
       const content = msg.content as any;
       const outputText =
         content.text || (content.data && content.data['text/plain']);
@@ -37,3 +48,106 @@ export async function getIMClientPath(): Promise<string> {
     }).catch(reject);
   });
 }
+
+export async function getDeployedTemplatePath(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const cmdDeployedTemplatePath = `
+      %%bash
+      realpath --relative-to="$(pwd)" resources/deployed-template.yaml
+    `;
+
+    executeKernelCommand(cmdDeployedTemplatePath, output => {
+      if (output.trim()) {
+        resolve(output.trim());
+      } else {
+        reject(
+          new Error(
+            'Failed to find deployed-template.yaml. Maybe it is not in the resources folder.'
+          )
+        );
+      }
+    }).catch(reject);
+  });
+}
+
+export async function getInfrastructuresListPath(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const cmdInfrastructuresListPath = `
+      %%bash
+      realpath --relative-to="$(pwd)" resources/infrastructuresList.json
+    `;
+
+    executeKernelCommand(cmdInfrastructuresListPath, output => {
+      if (output.trim()) {
+        resolve(output.trim());
+      } else {
+        reject(
+          new Error(
+            'Failed to find infrastructuresList.json. Maybe it is not in the resources folder.'
+          )
+        );
+      }
+    }).catch(reject);
+  });
+}
+
+export async function getDeployableTemplatesPath(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const cmdTemplatesPath = `%%bash\n
+      realpath --relative-to="$(pwd)" resources/deployable_templates
+    `;
+
+    executeKernelCommand(cmdTemplatesPath, output => {
+      if (output.trim()) {
+        resolve(output.trim());
+      } else {
+        reject(
+          new Error(
+            'Failed to find templates/ directory. Maybe it is not in the project folder.'
+          )
+        );
+      }
+    }).catch(reject);
+  });
+}
+
+// // Function to batch run commands in parallel
+// export async function getPathsInParallel(): Promise<{
+//   imClientPath: string;
+//   infrastructuresListPath: string;
+//   deployedTemplatePath: string;
+//   templatesPath: string;
+// }> {
+//   try {
+//     const [imClientPath, infrastructuresListPath, deployedTemplatePath, templatesPath] = await Promise.all([
+//       getIMClientPath(),
+//       getInfrastructuresListPath(),
+//       getDeployedTemplatePath(),
+//       getTemplatesPath(),
+//     ]);
+
+//     return {
+//       imClientPath,
+//       infrastructuresListPath,
+//       deployedTemplatePath,
+//       templatesPath,
+//     };
+//   } catch (error) {
+//     console.error('Error getting paths in parallel:', error);
+//     throw error;
+//   }
+// }
+
+// Function to get the infrastructures list path
+// export async function getCurrentWorkingDirectory(): Promise<string> {
+//   return new Promise((resolve, reject) => {
+//     const cmdCurrentDir = `
+//       %%bash
+//       pwd
+//     `;
+
+//     executeKernelCommand(cmdCurrentDir, (output) => {
+//       resolve(output.trim());
+//     }).catch(reject);
+//   });
+// }

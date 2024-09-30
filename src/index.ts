@@ -6,10 +6,6 @@ import { DOMUtils } from '@jupyterlab/apputils';
 import { Widget } from '@lumino/widgets';
 import { ButtonExtension } from './buttons';
 
-// Notifications for deployed infrastructures (https://github.com/jupyterlab/extension-examples/tree/main/notifications)
-// Signals to make widgets communicate with eachother (https://github.com/jupyterlab/extension-examples/tree/main/signals)
-// state to save and restore data saved in persistent state database (https://github.com/jupyterlab/extension-examples/tree/main/state)
-
 /**
  * Initialization data for the apricot extension.
  */
