@@ -1,9 +1,14 @@
 import * as jsyaml from 'js-yaml';
-import { ContentsManager } from '@jupyterlab/services';
-import { KernelManager } from '@jupyterlab/services';
+import { ContentsManager, KernelManager } from '@jupyterlab/services';
 import { Widget } from '@lumino/widgets';
 import { Dialog } from '@jupyterlab/apputils';
-import { executeKernelCommand, getIMClientPath, getInfrastructuresListPath, getDeployedTemplatePath } from './utils';
+import {
+  executeKernelCommand,
+  getDeployableTemplatesPath,
+  getInfrastructuresListPath,
+  getIMClientPath,
+  getDeployedTemplatePath
+} from './utils';
 
 interface IDeployInfo {
   IMuser: string;
@@ -100,9 +105,6 @@ const deployInfo: IDeployInfo = {
 let imageOptions: { uri: string; name: string }[] = [];
 
 let deploying = false; // Flag to prevent multiple deployments at the same time
-let imClientPath: string;
-let infrastructuresListPath: string;
-let deployedTemplatesPath: string;
 
 //*****************//
 //* Aux functions *//
@@ -205,7 +207,7 @@ async function createImagesDropdown(
   dialogBody: HTMLElement
 ) {
   if (!output) {
-    console.error('Output is empty or undefined.');
+    console.log('Waiting for OS images to load.');
     return;
   }
 
@@ -333,13 +335,18 @@ async function createChildsForm(
   deployDialog: HTMLElement,
   buttonsContainer: HTMLElement
 ) {
+  const templatesPath = await getDeployableTemplatesPath();
+
   // Create form element
   const form = document.createElement('form');
   form.id = `form-${app.toLowerCase()}`;
 
   // Load YAML file asynchronously
   const contentsManager = new ContentsManager();
-  const file = await contentsManager.get(`templates/${app.toLowerCase()}.yaml`);
+  const file = await contentsManager.get(
+    `${templatesPath}/${app.toLowerCase()}.yaml`
+  );
+
   const yamlContent = file.content as string;
 
   // Parse YAML content
@@ -426,6 +433,7 @@ async function createChildsForm(
 //*********************//
 
 async function selectImage(obj: IDeployInfo): Promise<string> {
+  const imClientPath = await getIMClientPath();
   const pipeAuth = `${obj.infName}-auth-pipe`;
 
   let cmd = `%%bash
@@ -493,7 +501,8 @@ async function deployIMCommand(
   mergedTemplate: string
 ): Promise<string> {
   const pipeAuth = `${obj.infName}-auth-pipe`;
-  const templatePath = '$PWD/deployed-template.yaml';
+  const deployedTemplatePath = await getDeployedTemplatePath();
+  const imClientPath = await getIMClientPath();
 
   let cmd = `%%bash
             PWD=$(pwd)
@@ -504,7 +513,7 @@ async function deployIMCommand(
             # Create pipes
             mkfifo $PWD/${pipeAuth}
             # Save mergedTemplate as a YAML file
-            echo '${mergedTemplate}' > ${templatePath}
+            echo '${mergedTemplate}' > ${deployedTemplatePath}
         `;
 
   // Command to create the IM-cli credentials
@@ -522,7 +531,7 @@ async function deployIMCommand(
 
   cmd += `echo -e "${authContent}" > $PWD/${pipeAuth} &
             # Create final command where the output is stored in "imageOut"
-            imageOut=$(python3 ${imClientPath} -a $PWD/${pipeAuth} create ${templatePath} -r https://im.egi.eu/im)
+            imageOut=$(python3 ${imClientPath} -a $PWD/${pipeAuth} create ${deployedTemplatePath} -r https://im.egi.eu/im)
             # Remove pipe
             rm -f $PWD/${pipeAuth} &> /dev/null
             # Print IM output on stderr or stdout
@@ -539,14 +548,14 @@ async function deployIMCommand(
 }
 
 async function saveToInfrastructureList(obj: IInfrastructureData) {
-  const filePath = '$PWD/infrastructuresList.json';
+  const infrastructuresListPath = await getInfrastructuresListPath();
   // Construct the bash command
   const cmd = `
             %%bash
             PWD=$(pwd)
-            existingJson=$(cat ${filePath})
+            existingJson=$(cat ${infrastructuresListPath})
             newJson=$(echo "$existingJson" | jq -c '.infrastructures += [${JSON.stringify(obj)}]')
-            echo "$newJson" > ${filePath}
+            echo "$newJson" > ${infrastructuresListPath}
         `;
 
   console.log('Bash command:', cmd);
@@ -564,30 +573,6 @@ generateIMCredentials().then(() => {
     deployInfo.IMpass
   );
 });
-
-getIMClientPath()
-  .then(path => {
-    process.env.IM_CLIENT_PATH = path;
-    imClientPath = path;
-    console.log('IM Client Path:', imClientPath);
-  })
-  .catch(error => {
-    console.error('Error getting IM Client Path:', error);
-  });
-
-getInfrastructuresListPath()
-  .then(path => {
-    process.env.INFRASTRUCTURES_LIST_PATH = infrastructuresListPath;
-    infrastructuresListPath = path;
-    console.log('Infrastructures List Path:', infrastructuresListPath);
-  });
-
-  getDeployedTemplatePath()
-  .then(path => {
-    process.env.DEPLOYED_TEMPLATE_PATH = deployedTemplatesPath;
-    deployedTemplatesPath = path;
-    console.log('Deployed Template Path:', deployedTemplatesPath);
-  });
 
 const deployChooseProvider = (dialogBody: HTMLElement): void => {
   // Clear dialog body
@@ -694,6 +679,8 @@ const createCheckboxesForChilds = async (
   dialogBody: HTMLElement,
   childs: string[]
 ): Promise<void> => {
+  const templatesPath = await getDeployableTemplatesPath();
+
   // Create paragraph element for checkboxes
   const paragraph = document.createElement('p');
   paragraph.textContent = 'Select optional recipe features:';
@@ -708,8 +695,9 @@ const createCheckboxesForChilds = async (
   const promises = childs.map(async child => {
     // Load YAML file asynchronously
     const file = await contentsManager.get(
-      `templates/${child.toLowerCase()}.yaml`
+      `${templatesPath}/${child.toLowerCase()}.yaml`
     );
+
     const yamlContent = file.content as string;
 
     // Parse YAML content
@@ -992,6 +980,7 @@ const deployChildsConfiguration = async (
     deployInfraConfiguration(dialogBody)
   );
   const nextButton = createButton('Deploy', async () => {
+    const templatesPath = await getDeployableTemplatesPath();
     const contentsManager = new ContentsManager();
     const userInputs = (
       await Promise.all(
@@ -1000,7 +989,9 @@ const deployChildsConfiguration = async (
           const childName = form.id.replace('form-', '');
 
           // Fetch YAML content
-          const file = await contentsManager.get(`templates/${childName}.yaml`);
+          const file = await contentsManager.get(
+            `${templatesPath}/${childName}.yaml`
+          );
           const yamlContent = file.content as string;
           const yamlData: any = jsyaml.load(yamlContent);
           const recipeInputs = yamlData.topology_template.inputs;
@@ -1071,8 +1062,11 @@ async function deployFinalRecipe(
   deploying = true;
 
   try {
+    const templatesPath = await getDeployableTemplatesPath();
     const contentsManager = new ContentsManager();
-    const file = await contentsManager.get('templates/simple-node-disk.yaml');
+    const file = await contentsManager.get(
+      `${templatesPath}/simple-node-disk.yaml`
+    );
     const yamlContent = file.content;
     const parsedTemplate = jsyaml.load(yamlContent) as any;
 
@@ -1179,5 +1173,4 @@ const handleFinalDeployOutput = async (
   }
 };
 
-// Exporting the function that initiates the dialog
 export { openDeploymentDialog };
