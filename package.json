@@ -61,7 +61,7 @@
         "@jupyterlab/services": "^7.2.1",
         "base": "^3.0.0",
         "react": "^18.2.0",
-        "webpack": "^5.0.0"
+        "webpack": "^5.94.0"
     },
     "devDependencies": {
         "@jupyterlab/builder": "^4.0.0",
