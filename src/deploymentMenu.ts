@@ -818,6 +818,18 @@ const deployProviderCredentials = async (
 
   const backBtn = createButton('Back', () => deployRecipeType(dialogBody));
   const nextButton = createButton('Next', async () => {
+    const username = getInputValue('username');
+    const password = getInputValue('password');
+    const host = getInputValue('host');
+
+    // Check for required values
+    if (!username || !password || !host) {
+      Notification.error('Please fill in all required fields before continuing.', {
+        autoClose: 5000
+      });
+      return;
+    }
+  
     switch (deployInfo.deploymentType) {
       case 'EC2': {
         const region = getInputValue('region');
