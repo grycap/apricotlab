@@ -1,7 +1,7 @@
 import * as jsyaml from 'js-yaml';
 import { ContentsManager, KernelManager } from '@jupyterlab/services';
 import { Widget } from '@lumino/widgets';
-import { Dialog } from '@jupyterlab/apputils';
+import { Dialog, Notification } from '@jupyterlab/apputils';
 import {
   executeKernelCommand,
   getDeployableTemplatesPath,
@@ -204,22 +204,24 @@ async function generateIMCredentials(): Promise<void> {
 
 async function createImagesDropdown(
   output: string | undefined,
-  dialogBody: HTMLElement
+  dropdownContainer: HTMLElement
 ) {
   if (!output) {
-    console.log('Waiting for OS images to load.');
+    console.log('Getting OS images...');
     return;
   }
 
   // Check if the output contains "error" in the message
   if (output.toLowerCase().includes('error')) {
-    alert(output);
+    Notification.error('No OS images found. Bad credentials.', {
+      autoClose: 5000
+    });
   }
 
   // Find the first occurrence of '[' and get the substring from there
   const jsonStartIndex = output.indexOf('[');
   if (jsonStartIndex === -1) {
-    console.error('No OS images available.');
+    console.error('No OS images found. Check credentials.');
     return;
   }
 
@@ -229,6 +231,9 @@ async function createImagesDropdown(
     const images: { uri: string; name: string }[] = JSON.parse(jsonOutput);
     imageOptions = images;
     console.log('Parsed images:', images);
+
+    // Clear the dropdown container before appending new content
+    dropdownContainer.innerHTML = '';
 
     // Create dropdown menu with image options
     const select = document.createElement('select');
@@ -241,7 +246,7 @@ async function createImagesDropdown(
       select.appendChild(option);
     });
 
-    dialogBody.appendChild(select);
+    dropdownContainer.appendChild(select);
   } catch (error) {
     console.error('Error getting OS images:', error);
   }
@@ -899,6 +904,11 @@ async function deployInfraConfiguration(
     '1'
   );
 
+  // Create a container for the dropdown
+  const dropdownContainer = document.createElement('div');
+  dropdownContainer.id = 'dropdownContainer';
+  dialogBody.appendChild(dropdownContainer);
+
   if (deployInfo.deploymentType !== 'EC2') {
     // Create select image command
     const cmdImageNames = await selectImage(deployInfo);
@@ -906,11 +916,10 @@ async function deployInfraConfiguration(
     try {
       // Execute the deployment command
       await executeKernelCommand(cmdImageNames, async outputText => {
-        await createImagesDropdown(outputText, dialogBody);
+        await createImagesDropdown(outputText, dropdownContainer); // Pass the container to hold the dropdown
       });
     } catch (error) {
       console.error('Error executing deployment command:', error);
-      alert('No OS images found. Bad credentials.');
     }
   }
 
@@ -919,29 +928,41 @@ async function deployInfraConfiguration(
   );
   const nextBtn = createButton(
     deployInfo.childs.length === 0 ? 'Deploy' : 'Next',
-    () => {
-      const selectedImageUri = (
-        document.getElementById('imageDropdown') as HTMLSelectElement
-      ).value;
+    async () => {
+      try {
+        const selectedImageUri = (
+          document.getElementById('imageDropdown') as HTMLSelectElement
+        ).value;
 
-      deployInfo.infName = getInputValue('infrastructureName');
-      deployInfo.worker.num_instances = parseInt(
-        getInputValue('infrastructureWorkers')
-      );
-      deployInfo.worker.num_cpus = parseInt(
-        getInputValue('infrastructureCPUs')
-      );
-      deployInfo.worker.mem_size = getInputValue('infrastructureMem');
-      deployInfo.worker.disk_size = getInputValue('infrastructureDiskSize');
-      deployInfo.worker.num_gpus = parseInt(
-        getInputValue('infrastructureGPUs')
-      );
-      deployInfo.worker.image = selectedImageUri;
+        // Retrieve and parse form input values
+        deployInfo.infName = getInputValue('infrastructureName');
+        deployInfo.worker.num_instances = parseInt(
+          getInputValue('infrastructureWorkers')
+        );
+        deployInfo.worker.num_cpus = parseInt(
+          getInputValue('infrastructureCPUs')
+        );
+        deployInfo.worker.mem_size = getInputValue('infrastructureMem');
+        deployInfo.worker.disk_size = getInputValue('infrastructureDiskSize');
+        deployInfo.worker.num_gpus = parseInt(
+          getInputValue('infrastructureGPUs')
+        );
+        deployInfo.worker.image = selectedImageUri;
 
-      if (deployInfo.childs.length === 0) {
-        deployFinalRecipe(dialogBody);
-      } else {
-        deployChildsConfiguration(dialogBody);
+        // Check if we need to deploy final recipe or configure child components
+        if (deployInfo.childs.length === 0) {
+          await deployFinalRecipe(dialogBody);
+        } else {
+          await deployChildsConfiguration(dialogBody);
+        }
+      } catch (error) {
+        console.error('Error in deployment process:', error);
+        Notification.error(
+          'Check for correct provider credentials before continuing.',
+          {
+            autoClose: 5000
+          }
+        );
       }
     }
   );
@@ -1052,7 +1073,9 @@ async function deployFinalRecipe(
 
   // Ensure only one deployment occurs at a time
   if (deploying) {
-    alert('Previous deploy has not finished.');
+    Notification.error('Previous deploy has not finished.', {
+      autoClose: 5000
+    });
     return;
   }
   deploying = true;
@@ -1114,13 +1137,17 @@ const handleFinalDeployOutput = async (
   }
 
   if (output.toLowerCase().includes('error')) {
-    alert(output);
+    Notification.error(output, {
+      autoClose: 5000
+    });
     deploying = false;
     deployInfo.childs.length === 0
       ? deployInfraConfiguration(dialogBody)
       : deployChildsConfiguration(dialogBody);
   } else {
-    alert(output);
+    Notification.success(output, {
+      autoClose: 5000
+    });
 
     // Extract infrastructure ID
     const idMatch = output.match(/ID: ([\w-]+)/);
@@ -1150,7 +1177,7 @@ const handleFinalDeployOutput = async (
     try {
       // Execute kernel command to save data
       await executeKernelCommand(cmdSave, outputText => {
-        console.log('Data saved:', outputText);
+        console.log('Data saved to infrastructuresList.json.');
       });
     } catch (error) {
       console.error('Error executing kernel command:', error);
