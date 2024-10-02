@@ -126,6 +126,7 @@ async function openDeploymentDialog(): Promise<void> {
     buttons: []
   });
 
+  dialog.node.style.resize = 'none';
   // Handle form submission
   dialog.launch().then(result => {
     // Logic to handle form submission
@@ -139,11 +140,14 @@ const createButton = (
 ): HTMLButtonElement => {
   const button = document.createElement('button');
   button.textContent = label;
+  button.className = 'jp-Button';
   button.addEventListener('click', onClick);
-  // Set an id for the "Next" button
-  if (label === 'Next') {
-    button.id = 'nextButton';
+
+  // Check if the button is 'Back' or 'Next/Deploy'
+  if (label === 'Back' || label === 'Next' || label === 'Deploy') {
+    button.classList.add('footer-button');
   }
+
   return button;
 };
 
@@ -361,11 +365,13 @@ async function createChildsForm(
 
   // Create button for the app
   const appButton = document.createElement('button');
-  appButton.className = 'formButton';
+  appButton.className = 'jp-Button';
+  appButton.className = 'child-buttons';
   appButton.textContent = templateName;
 
   // Show form for the selected app when clicked
-  appButton.addEventListener('click', () => {
+  appButton.addEventListener('click', event => {
+    event.preventDefault(); // Prevent the default form submission
     Array.from(deployDialog.querySelectorAll('form')).forEach(form => {
       form.style.display = 'none';
     });
@@ -587,9 +593,7 @@ const deployChooseProvider = (dialogBody: HTMLElement): void => {
   // Create buttons for each provider
   const providers = ['OpenNebula', 'EC2', 'OpenStack', 'EGI'];
   providers.forEach(provider => {
-    const button = document.createElement('button');
-    button.textContent = provider;
-    button.addEventListener('click', () => {
+    const button = createButton(provider, () => {
       // Set deployInfo based on the selected provider
       switch (provider) {
         case 'EC2':
@@ -617,6 +621,7 @@ const deployChooseProvider = (dialogBody: HTMLElement): void => {
       console.log(`Provider ${provider} selected`);
       console.log('deployInfo:', deployInfo);
     });
+
     dialogBody.appendChild(button);
   });
 };
@@ -659,6 +664,9 @@ const deployRecipeType = (dialogBody: HTMLElement): void => {
     }
   ];
 
+  const buttonContainer = document.createElement('div');
+  buttonContainer.className = 'footer-button-container';
+
   // Create buttons for each recipe type
   recipes.forEach(recipe => {
     const button = createButton(recipe.name, () => {
@@ -673,7 +681,9 @@ const deployRecipeType = (dialogBody: HTMLElement): void => {
   // Create a back button
   const backBtn = createButton('Back', () => deployChooseProvider(dialogBody));
   backBtn.classList.add('back-button');
-  dialogBody.appendChild(backBtn);
+  buttonContainer.appendChild(backBtn);
+
+  dialogBody.appendChild(buttonContainer);
 };
 
 const createCheckboxesForChilds = async (
@@ -742,6 +752,12 @@ const createCheckboxesForChilds = async (
   // Append checkbox grid to dialog body
   dialogBody.appendChild(ul);
 
+  const buttonContainer = document.createElement('div');
+  buttonContainer.className = 'footer-button-container';
+
+  const backBtn = createButton('Back', () => deployChooseProvider(dialogBody));
+  backBtn.classList.add('back-button');
+  buttonContainer.appendChild(backBtn);
   // Create "Next" button
   const nextButton = createButton('Next', () => {
     // Populate deployInfo.childs
@@ -752,7 +768,9 @@ const createCheckboxesForChilds = async (
     deployProviderCredentials(dialogBody);
   });
 
-  dialogBody.appendChild(nextButton);
+  buttonContainer.appendChild(nextButton);
+
+  dialogBody.appendChild(buttonContainer);
 };
 
 const deployProviderCredentials = async (
@@ -816,6 +834,9 @@ const deployProviderCredentials = async (
 
   form.insertAdjacentHTML('afterbegin', text);
 
+  const buttonContainer = document.createElement('div');
+  buttonContainer.className = 'footer-button-container';
+
   const backBtn = createButton('Back', () => deployRecipeType(dialogBody));
   const nextButton = createButton('Next', async () => {
     const username = getInputValue('username');
@@ -824,12 +845,15 @@ const deployProviderCredentials = async (
 
     // Check for required values
     if (!username || !password || !host) {
-      Notification.error('Please fill in all required fields before continuing.', {
-        autoClose: 5000
-      });
+      Notification.error(
+        'Please fill in all required fields before continuing.',
+        {
+          autoClose: 5000
+        }
+      );
       return;
     }
-  
+
     switch (deployInfo.deploymentType) {
       case 'EC2': {
         const region = getInputValue('region');
@@ -863,8 +887,10 @@ const deployProviderCredentials = async (
 
     deployInfraConfiguration(dialogBody);
   });
-  dialogBody.appendChild(backBtn);
-  dialogBody.appendChild(nextButton);
+  buttonContainer.appendChild(backBtn);
+  buttonContainer.appendChild(nextButton);
+
+  dialogBody.appendChild(buttonContainer);
 };
 
 async function deployInfraConfiguration(
@@ -916,28 +942,15 @@ async function deployInfraConfiguration(
     '1'
   );
 
+  const buttonContainer = document.createElement('div');
+  buttonContainer.className = 'footer-button-container';
+
   // Create a container for the dropdown
   const dropdownContainer = document.createElement('div');
   dropdownContainer.id = 'dropdownContainer';
   dialogBody.appendChild(dropdownContainer);
 
-  if (deployInfo.deploymentType !== 'EC2') {
-    // Create select image command
-    const cmdImageNames = await selectImage(deployInfo);
-
-    try {
-      // Execute the deployment command
-      await executeKernelCommand(cmdImageNames, async outputText => {
-        await createImagesDropdown(outputText, dropdownContainer); // Pass the container to hold the dropdown
-      });
-    } catch (error) {
-      console.error('Error executing deployment command:', error);
-    }
-  }
-
-  const backBtn = createButton('Back', () =>
-    deployProviderCredentials(dialogBody)
-  );
+  // Create the next button and disable it initially
   const nextBtn = createButton(
     deployInfo.childs.length === 0 ? 'Deploy' : 'Next',
     async () => {
@@ -979,8 +992,28 @@ async function deployInfraConfiguration(
     }
   );
 
-  dialogBody.appendChild(backBtn);
-  dialogBody.appendChild(nextBtn);
+  if (deployInfo.deploymentType !== 'EC2') {
+    // Create select image command
+    const cmdImageNames = await selectImage(deployInfo);
+
+    try {
+      // Execute the deployment command
+      await executeKernelCommand(cmdImageNames, async outputText => {
+        await createImagesDropdown(outputText, dropdownContainer); // Pass the container to hold the dropdown
+      });
+    } catch (error) {
+      console.error('Error executing deployment command:', error);
+    }
+  }
+
+  const backBtn = createButton('Back', () =>
+    deployProviderCredentials(dialogBody)
+  );
+
+  buttonContainer.appendChild(backBtn);
+  buttonContainer.appendChild(nextBtn);
+
+  dialogBody.appendChild(buttonContainer);
 }
 
 const deployChildsConfiguration = async (
@@ -1001,6 +1034,9 @@ const deployChildsConfiguration = async (
       createChildsForm(app, index, dialogBody, buttonsContainer)
     )
   );
+
+  const buttonContainer = document.createElement('div');
+  buttonContainer.className = 'footer-button-container';
 
   const nodeTemplates = forms.map(form => form.nodeTemplates);
   const outputs = forms.map(form => form.outputs);
@@ -1070,8 +1106,10 @@ const deployChildsConfiguration = async (
   });
 
   // Set dialog buttons
-  dialogBody.appendChild(backBtn);
-  dialogBody.appendChild(nextButton);
+  buttonContainer.appendChild(backBtn);
+  buttonContainer.appendChild(nextButton);
+
+  dialogBody.appendChild(buttonContainer);
 };
 
 async function deployFinalRecipe(
