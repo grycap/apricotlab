@@ -4,7 +4,7 @@ let kernelManager: KernelManager | null = null;
 let kernel: any | null = null;
 
 // Get or start a new kernel (reused across all executions)
-async function getOrStartKernel() {
+export async function getOrStartKernel() {
   if (!kernelManager || !kernel) {
     kernelManager = new KernelManager();
     kernel = await kernelManager.startNew();

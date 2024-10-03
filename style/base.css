@@ -72,7 +72,7 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 100vh;
+  height: 70vh;
 }
 
 .loader {
@@ -138,6 +138,11 @@
 
 .jp-Button {
   color: var(--jp-ui-font-color0);
+}
+
+.jp-Button:focus,
+.jp-Button.active {
+  background-color: #f6a83a;
 }
 
 /* Styles for the childs buttons */
