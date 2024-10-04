@@ -126,7 +126,6 @@ async function openDeploymentDialog(): Promise<void> {
     buttons: []
   });
 
-  dialog.node.style.resize = 'none';
   // Handle form submission
   dialog.launch().then(result => {
     // Logic to handle form submission
@@ -217,7 +216,7 @@ async function createImagesDropdown(
 
   // Check if the output contains "error" in the message
   if (output.toLowerCase().includes('error')) {
-    Notification.error('No OS images found. Bad credentials.', {
+    Notification.error('No OS images found. Bad provider credentials.', {
       autoClose: 5000
     });
   }
@@ -225,7 +224,7 @@ async function createImagesDropdown(
   // Find the first occurrence of '[' and get the substring from there
   const jsonStartIndex = output.indexOf('[');
   if (jsonStartIndex === -1) {
-    console.error('No OS images found. Check credentials.');
+    console.error('No OS images found. Check provider credentials.');
     return;
   }
 
@@ -365,8 +364,7 @@ async function createChildsForm(
 
   // Create button for the app
   const appButton = document.createElement('button');
-  appButton.className = 'jp-Button';
-  appButton.className = 'child-buttons';
+  appButton.className = 'jp-Button child-buttons';
   appButton.textContent = templateName;
 
   // Show form for the selected app when clicked
@@ -594,7 +592,6 @@ const deployChooseProvider = (dialogBody: HTMLElement): void => {
   const providers = ['OpenNebula', 'EC2', 'OpenStack', 'EGI'];
   providers.forEach(provider => {
     const button = createButton(provider, () => {
-      // Set deployInfo based on the selected provider
       switch (provider) {
         case 'EC2':
           deployInfo.id = 'ec2';
@@ -1187,14 +1184,19 @@ const handleFinalDeployOutput = async (
   }
 
   if (output.toLowerCase().includes('error')) {
-    Notification.error(output, {
-      autoClose: 5000
-    });
+    console.error('Error deploying infrastructure:', output);
+    Notification.error(
+      'Error deploying infrastructure. Check the console for more details.',
+      {
+        autoClose: 5000
+      }
+    );
     deploying = false;
     deployInfo.childs.length === 0
       ? deployInfraConfiguration(dialogBody)
       : deployChildsConfiguration(dialogBody);
   } else {
+    console.log('Infrastructure deployed:', output);
     Notification.success(output, {
       autoClose: 5000
     });
