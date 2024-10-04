@@ -82,11 +82,10 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
   let jsonData: string | null = null;
   const infrastructuresListPath = await getInfrastructuresListPath();
 
-  // Get the kernel instance using the utility function
   const kernel = await getOrStartKernel();
 
   try {
-    // Read the contents of infrastructuresList.json
+    // Read infrastructuresList.json
     const cmdReadJson = `%%bash
                         cat "${infrastructuresListPath}"
                       `;
@@ -102,7 +101,7 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
     await futureReadJson.done;
 
     if (!jsonData) {
-      throw new Error('No data received from infrastructuresList.json');
+      throw new Error('infrastructuresList.json does not exist in the path.');
     }
   } catch (error) {
     console.error('Error reading or parsing infrastructuresList.json:', error);
@@ -176,7 +175,7 @@ async function fetchInfrastructureData(
     const future = kernel.requestExecute({ code: cmd });
 
     future.onIOPub = (msg: any) => {
-      const content = msg.content as any; // Cast content to any type
+      const content = msg.content as any;
       const outputData =
         content.text || (content.data && content.data['text/plain']);
 
@@ -273,7 +272,7 @@ async function infrastructureState(
               fi
             `;
 
-  console.log('cmdState', cmd);
+  console.log('Get state command: ', cmd);
   return cmd;
 }
 
@@ -339,7 +338,7 @@ async function infrastructureIP(
               fi
             `;
 
-  console.log('cmdState', cmd);
+  console.log('Get IP command: ', cmd);
   return cmd;
 }
 
