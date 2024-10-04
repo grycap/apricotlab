@@ -126,11 +126,7 @@ async function openDeploymentDialog(): Promise<void> {
     buttons: []
   });
 
-  // Handle form submission
-  dialog.launch().then(result => {
-    // Logic to handle form submission
-    console.log('Form submitted');
-  });
+  dialog.launch()
 }
 
 const createButton = (
@@ -434,9 +430,9 @@ async function createChildsForm(
   };
 }
 
-// *********************//
-// *   Bash commands   *//
-// *********************//
+//*********************//
+//*   Bash commands   *//
+//*********************//
 
 async function selectImage(obj: IDeployInfo): Promise<string> {
   const imClientPath = await getIMClientPath();
@@ -454,7 +450,7 @@ async function selectImage(obj: IDeployInfo): Promise<string> {
 
   // Command to create the IM-cli credentials
   let authContent = `id = im; type = InfrastructureManager; username = ${obj.IMuser}; password = ${obj.IMpass};\n`;
-  authContent += `id = ${obj.id}; type = ${obj.deploymentType}; host = ${obj.host};`;
+  authContent += `id = ${obj.id}; type = ${obj.deploymentType}; host = ${obj.host}; `;
 
   if (obj.deploymentType === 'OpenNebula') {
     authContent += ` username = ${obj.username}; password = ${obj.password};`;
@@ -836,17 +832,22 @@ const deployProviderCredentials = async (
 
   const backBtn = createButton('Back', () => deployRecipeType(dialogBody));
   const nextButton = createButton('Next', async () => {
-    const username = getInputValue('username');
-    const password = getInputValue('password');
-    const host = getInputValue('host');
-
-    // Check for required values
-    if (!username || !password || !host) {
+    const form = dialogBody.querySelector('form'); // Get the form element
+    const inputs = form?.querySelectorAll('input'); // Get all input fields in the form
+  
+    // Loop through each input and check if it is empty
+    let allFieldsFilled = true;
+    inputs?.forEach(input => {
+      if (!input.value) {
+        allFieldsFilled = false;
+      }
+    });
+  
+    // Trigger error if any field is empty
+    if (!allFieldsFilled) {
       Notification.error(
         'Please fill in all required fields before continuing.',
-        {
-          autoClose: 5000
-        }
+        { autoClose: 5000 }
       );
       return;
     }
@@ -1177,8 +1178,9 @@ const handleFinalDeployOutput = async (
   output: string | undefined,
   dialogBody: HTMLElement
 ): Promise<void> => {
-  if (!output) {
-    return;
+  while (!output) {
+    // Wait 1 second before checking again until the output is ready
+    await new Promise(resolve => setTimeout(resolve, 1000));
   }
 
   if (output.toLowerCase().includes('error')) {
@@ -1225,7 +1227,6 @@ const handleFinalDeployOutput = async (
 
 // Execute kernel command to save data
 try {
-    // Execute kernel command to save data
     const outputText = await executeKernelCommand(cmdSave);
     console.log('Data saved to infrastructuresList.json:', outputText);
 } catch (error) {
