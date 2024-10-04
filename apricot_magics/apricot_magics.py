@@ -56,9 +56,7 @@ class Apricot_Magics(Magics):
         return
 
     def generate_key(self, infrastructure_id, vm_id):
-        ##########################################
-        #   Generates private key and host IP    #
-        ##########################################
+        """ Generates private key and host IP """
         private_key_content = None
         host_ip = None
 
@@ -134,7 +132,6 @@ class Apricot_Magics(Magics):
             raise FileNotFoundError("im_client.py executable not found in PATH")
 
     def find_im_client(self) -> str:
-        """Find the 'im_client.py' executable in the system's PATH using the 'which' command."""
         executable_name = "im_client.py"
         try:
             # Use 'which' command to find the executable
@@ -142,7 +139,6 @@ class Apricot_Magics(Magics):
             executable_path = result.stdout.strip()
             return executable_path
         except (CalledProcessError, FileNotFoundError):
-            # Return None if the executable is not found
             return None
 
     ##################
@@ -431,7 +427,7 @@ class Apricot_Magics(Magics):
 
         # Add each file to the scp command
         for file in files:
-            cmd_scp.extend(file)
+            cmd_scp.append(file)
         # Add the destination path to the scp command
         cmd_scp.append(f'root@{hostIP}:{destination}')
 
@@ -600,13 +596,13 @@ class Apricot_Magics(Magics):
                 ]
 
                 try:
-                    print("Destroying...\nPlease wait, this may take a few seconds.", end='', flush=True)
+                    print("Destroying... Please wait, this may take a few seconds.", end='', flush=True)
                     result = run(cmd_destroy, stdout=PIPE, stderr=PIPE, universal_newlines=True)
                     log = result.stdout
                     std_err = result.stderr
 
                     # Clear the message
-                    print("\r" + " " * len("Destroying...\nPlease wait, this may take a few seconds."), end='', flush=True)
+                    print("\r" + " " * len("Destroying... Please wait, this may take a few seconds."), end='', flush=True)
                     print("\r", end='', flush=True)
                     
                     if log:
