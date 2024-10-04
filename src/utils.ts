@@ -1,4 +1,5 @@
 import { KernelManager } from '@jupyterlab/services';
+import { Notification } from '@jupyterlab/apputils';
 
 let kernelManager: KernelManager | null = null;
 let kernel: any | null = null;
@@ -12,105 +13,82 @@ export async function getOrStartKernel() {
   return kernel;
 }
 
-export async function executeKernelCommand(
-  command: string,
-  callback: (output: string) => void
-): Promise<void> {
-  try {
-    const kernel = await getOrStartKernel();
-    const future = kernel.requestExecute({ code: command });
+export async function executeKernelCommand(command: string): Promise<string> {
+  const kernelInstance = await getOrStartKernel();
+  const future = kernelInstance.requestExecute({ code: command });
 
-    future.onIOPub = (msg: any) => {
-      const content = msg.content as any;
-      const outputText =
-        content.text || (content.data && content.data['text/plain']);
-      callback(outputText);
+  return new Promise((resolve, reject) => {
+    future.onIOPub = (msg: { content: any }) => {
+      const content = msg.content;
+      const outputText = content.text || (content.data && content.data['text/plain']);
+
+      // Resolve the promise with the output text if it exists
+      if (outputText) {
+        resolve(outputText.trim());
+      }
     };
+
+    // Handle errors in command execution
+    future.onFinished = (msg: { content: { status: string } }) => {
+      if (msg.content.status !== 'ok') {
+        reject(new Error(`Kernel execution failed: ${msg.content.status}`));
+      }
+    };
+  });
+}
+
+async function getPath(command: string, notificationMessage: string): Promise<string> {
+  try {
+    return await executeKernelCommand(command);
   } catch (error) {
-    console.error('Error executing kernel command:', error);
+    Notification.error(notificationMessage, {
+      autoClose: 5000,
+    });
+    console.error((error as Error).message);
+    throw error;
   }
 }
 
 export async function getIMClientPath(): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const cmdIMClientPath = `
-      %%bash
-      which im_client.py
-    `;
-
-    executeKernelCommand(cmdIMClientPath, output => {
-      if (output.trim()) {
-        resolve(output.trim());
-      } else {
-        reject(
-          new Error(
-            'Failed to find im_client.py path. Maybe IM-client is not installed.'
-          )
-        );
-      }
-    }).catch(reject);
-  });
+  const cmdIMClientPath = `
+    %%bash
+    which im_client.py
+  `;
+  return getPath(
+    cmdIMClientPath,
+    'Failed to find im_client.py path. Maybe IM-client is not installed. Check the console for more details.'
+  );
 }
 
 export async function getDeployedTemplatePath(): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const cmdDeployedTemplatePath = `
-      %%bash
-      realpath --relative-to="$(pwd)" resources/deployed-template.yaml
-    `;
-
-    executeKernelCommand(cmdDeployedTemplatePath, output => {
-      if (output.trim()) {
-        resolve(output.trim());
-      } else {
-        reject(
-          new Error(
-            'Failed to find deployed-template.yaml. Maybe it is not in the resources folder.'
-          )
-        );
-      }
-    }).catch(reject);
-  });
+  const cmdDeployedTemplatePath = `
+    %%bash
+    realpath --relative-to="$(pwd)" resources/deployed-template.yaml
+  `;
+  return getPath(
+    cmdDeployedTemplatePath,
+    'Failed to find deployed-template.yaml. Maybe it is not in the resources folder. Check the console for more details.'
+  );
 }
 
 export async function getInfrastructuresListPath(): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const cmdInfrastructuresListPath = `
-      %%bash
-      realpath --relative-to="$(pwd)" resources/infrastructuresList.json
-    `;
-
-    executeKernelCommand(cmdInfrastructuresListPath, output => {
-      if (output.trim()) {
-        resolve(output.trim());
-      } else {
-        reject(
-          new Error(
-            'Failed to find infrastructuresList.json. Maybe it is not in the resources folder.'
-          )
-        );
-      }
-    }).catch(reject);
-  });
+  const cmdInfrastructuresListPath = `
+    %%bash
+    realpath --relative-to="$(pwd)" resources/infrastructuresList.json
+  `;
+  return getPath(
+    cmdInfrastructuresListPath,
+    'Failed to find infrastructuresList.json. Maybe it is not in the resources folder. Check the console for more details.'
+  );
 }
 
 export async function getDeployableTemplatesPath(): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const cmdTemplatesPath = `
-      %%bash
-      realpath --relative-to="$(pwd)" resources/deployable_templates
-    `;
-
-    executeKernelCommand(cmdTemplatesPath, output => {
-      if (output.trim()) {
-        resolve(output.trim());
-      } else {
-        reject(
-          new Error(
-            'Failed to find templates/ directory. Maybe it is not in the project folder.'
-          )
-        );
-      }
-    }).catch(reject);
-  });
+  const cmdTemplatesPath = `
+    %%bash
+    realpath --relative-to="$(pwd)" resources/deployable_templates
+  `;
+  return getPath(
+    cmdTemplatesPath,
+    'Failed to find templates/ directory. Maybe it is not in the project folder. Check the console for more details.'
+  );
 }

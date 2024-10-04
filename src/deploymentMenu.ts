@@ -434,9 +434,9 @@ async function createChildsForm(
   };
 }
 
-//*********************//
-//*   Bash commands   *//
-//*********************//
+// *********************//
+// *   Bash commands   *//
+// *********************//
 
 async function selectImage(obj: IDeployInfo): Promise<string> {
   const imClientPath = await getIMClientPath();
@@ -995,10 +995,9 @@ async function deployInfraConfiguration(
 
     try {
       // Execute the deployment command
-      await executeKernelCommand(cmdImageNames, async outputText => {
-        await createImagesDropdown(outputText, dropdownContainer); // Pass the container to hold the dropdown
-      });
-    } catch (error) {
+      const outputText = await executeKernelCommand(cmdImageNames);
+      await createImagesDropdown(outputText, dropdownContainer); // Pass the container to hold the dropdown
+  } catch (error) {
       console.error('Error executing deployment command:', error);
     }
   }
@@ -1135,12 +1134,12 @@ async function deployFinalRecipe(
     );
     const yamlContent = file.content;
     const parsedTemplate = jsyaml.load(yamlContent) as any;
-
+  
     // Add infrastructure name and a hash to the metadata
     const hash = await computeHash(JSON.stringify(deployInfo));
     parsedTemplate.metadata = parsedTemplate.metadata || {};
     parsedTemplate.metadata.infra_name = `jupyter_${hash}`;
-
+  
     // Populate the template with worker values
     const workerInputs = parsedTemplate.topology_template.inputs;
     Object.keys(deployInfo.worker).forEach(key => {
@@ -1149,7 +1148,7 @@ async function deployFinalRecipe(
       };
       workerInputs[key].default = deployInfo.worker[key];
     });
-
+  
     // Merge templates
     const mergedTemplate = await mergeTOSCARecipes(
       parsedTemplate,
@@ -1158,21 +1157,20 @@ async function deployFinalRecipe(
       outputs
     );
     const mergedYamlContent = jsyaml.dump(mergedTemplate);
-
+  
     // Create deploy command
     const cmdDeploy = await deployIMCommand(deployInfo, mergedYamlContent);
-
+  
     // Show loading spinner
     dialogBody.innerHTML =
       '<div class="loader-container"><div class="loader"></div></div>';
-
-    await executeKernelCommand(cmdDeploy, outputText =>
-      handleFinalDeployOutput(outputText, dialogBody)
-    );
+  
+    const outputText = await executeKernelCommand(cmdDeploy);
+    handleFinalDeployOutput(outputText, dialogBody);
   } catch (error) {
     console.error('Error during deployment:', error);
     deploying = false;
-  }
+  }  
 }
 
 const handleFinalDeployOutput = async (
@@ -1225,16 +1223,15 @@ const handleFinalDeployOutput = async (
 
     const cmdSave = await saveToInfrastructureList(infrastructureData);
 
+// Execute kernel command to save data
+try {
     // Execute kernel command to save data
-    try {
-      // Execute kernel command to save data
-      await executeKernelCommand(cmdSave, outputText => {
-        console.log('Data saved to infrastructuresList.json.');
-      });
-    } catch (error) {
-      console.error('Error executing kernel command:', error);
-      deploying = false;
-    }
+    const outputText = await executeKernelCommand(cmdSave);
+    console.log('Data saved to infrastructuresList.json:', outputText);
+} catch (error) {
+    console.error('Error executing kernel command:', error);
+    deploying = false;
+}
     // Show the success circle
     dialogBody.innerHTML = `
                 <div class="success-container">

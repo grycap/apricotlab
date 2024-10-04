@@ -67,9 +67,9 @@ function createTable(): HTMLTableElement {
   table.classList.add('deployments-table');
 
   // Create the header row
-  const headerRow = table.insertRow();
   const headers = ['Name', 'ID', 'IP', 'State'];
-  headers.forEach(header => {
+  const headerRow = table.insertRow();
+  headers.map(header => {
     const th = document.createElement('th');
     th.textContent = header;
     headerRow.appendChild(th);
@@ -164,11 +164,7 @@ async function fetchInfrastructureData(
   cell: HTMLTableCellElement,
   dataType: 'state' | 'ip'
 ): Promise<string> {
-  // Construct the command based on the type of data requested
-  const cmd =
-    dataType === 'state'
-      ? await infrastructureState(infrastructure)
-      : await infrastructureIP(infrastructure);
+  const cmd = await getInfrastructureInfo(infrastructure, dataType);
 
   return new Promise<string>(resolve => {
     cell.textContent = 'Loading...';
@@ -191,8 +187,7 @@ async function fetchInfrastructureData(
             stateIndex !== -1 && stateIndex < stateWords.length - 1
               ? stateWords[stateIndex + 1].trim()
               : 'Error';
-        } else {
-          // dataType is 'ip'
+        } else { // dataType is 'ip'
           // Extract the IP from the output (get the last word)
           const ipWords = outputData.trim().split(' ');
           const ip = ipWords[ipWords.length - 1];
@@ -210,8 +205,9 @@ async function fetchInfrastructureData(
   });
 }
 
-async function infrastructureState(
-  infrastructure: IInfrastructure
+async function getInfrastructureInfo(
+  infrastructure: IInfrastructure,
+  dataType: 'state' | 'ip'
 ): Promise<string> {
   const {
     IMuser,
@@ -252,93 +248,31 @@ async function infrastructureState(
   }
 
   const cmd = `%%bash
-              PWD=$(pwd)
-              # Remove pipes if they exist
-              rm -f $PWD/${pipeAuth} &> /dev/null
-              # Create pipes
-              mkfifo $PWD/${pipeAuth}
-              # Command to create the infrastructure manager client credentials
-              echo -e "${authContent}" > $PWD/${pipeAuth} &
+                PWD=$(pwd)
+                # Remove pipes if they exist
+                rm -f $PWD/${pipeAuth} &> /dev/null
+                # Create pipes
+                mkfifo $PWD/${pipeAuth}
+                # Command to create the infrastructure manager client credentials
+                echo -e "${authContent}" > $PWD/${pipeAuth} &
 
-              stateOut=$(python3 ${imClientPath} getstate ${infrastructureID} -r https://im.egi.eu/im -a $PWD/${pipeAuth})
-              # Remove pipe
-              rm -f $PWD/${pipeAuth} &> /dev/null
-              # Print state output on stderr or stdout
-              if [ $? -ne 0 ]; then
-                  >&2 echo -e $stateOut
-                  exit 1
-              else
-                  echo -e $stateOut
-              fi
-            `;
+                if [ "${dataType}" = "state" ]; then
+                    stateOut=\$(python3 ${imClientPath} getstate ${infrastructureID} -r https://im.egi.eu/im -a \$PWD/${pipeAuth})
+                else
+                    stateOut=\$(python3 ${imClientPath} getvminfo ${infrastructureID} 0 net_interface.1.ip -r https://im.egi.eu/im -a \$PWD/${pipeAuth})
+                fi
+                # Remove pipe
+                rm -f $PWD/${pipeAuth} &> /dev/null
+                # Print state output on stderr or stdout
+                if [ $? -ne 0 ]; then
+                    >&2 echo -e \$stateOut
+                    exit 1
+                else
+                    echo -e \$stateOut
+                fi
+              `;
 
-  console.log('Get state command: ', cmd);
-  return cmd;
-}
-
-async function infrastructureIP(
-  infrastructure: IInfrastructure
-): Promise<string> {
-  const {
-    IMuser,
-    IMpass,
-    infrastructureID,
-    id,
-    type,
-    host,
-    user = '',
-    pass = '',
-    tenant = '',
-    auth_version = '',
-    vo = '',
-    EGIToken = ''
-  } = infrastructure;
-
-  const pipeAuth = 'auth-pipe';
-  const imClientPath = await getIMClientPath();
-
-  let authContent = `id=im; type=InfrastructureManager; username=${IMuser}; password=${IMpass};\n`;
-  authContent += `id=${id}; type=${type}; host=${host};`;
-
-  switch (type) {
-    case 'OpenStack':
-      authContent += ` username=${user}; password=${pass}; tenant=${tenant}; ${auth_version ? `auth_version=${auth_version};` : ''}`;
-      break;
-    case 'OpenNebula':
-      authContent += ` username=${user}; password=${pass};`;
-      break;
-    case 'EC2':
-      authContent += ` username=${user}; password=${pass};`;
-      break;
-    case 'EGI':
-      authContent += ` vo=${vo}; token=${EGIToken};`;
-      break;
-    default:
-      authContent += '';
-  }
-
-  const cmd = `%%bash
-              PWD=$(pwd)
-              # Remove pipes if they exist
-              rm -f $PWD/${pipeAuth} &> /dev/null
-              # Create pipes
-              mkfifo $PWD/${pipeAuth}
-              # Command to create the infrastructure manager client credentials
-              echo -e "${authContent}" > $PWD/${pipeAuth} &
-
-              stateOut=$(python3 ${imClientPath} getvminfo ${infrastructureID} 0 net_interface.1.ip -r https://im.egi.eu/im -a $PWD/${pipeAuth})
-              # Remove pipe
-              rm -f $PWD/${pipeAuth} &> /dev/null
-              # Print state output on stderr or stdout
-              if [ $? -ne 0 ]; then
-                  >&2 echo -e $stateOut
-                  exit 1
-              else
-                  echo -e $stateOut
-              fi
-            `;
-
-  console.log('Get IP command: ', cmd);
+  console.log(`Get ${dataType} command: `, cmd);
   return cmd;
 }
 
