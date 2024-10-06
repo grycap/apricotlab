@@ -20,7 +20,8 @@ export async function executeKernelCommand(command: string): Promise<string> {
   return new Promise((resolve, reject) => {
     future.onIOPub = (msg: { content: any }) => {
       const content = msg.content;
-      const outputText = content.text || (content.data && content.data['text/plain']);
+      const outputText =
+        content.text || (content.data && content.data['text/plain']);
 
       // Resolve the promise with the output text if it exists
       if (outputText) {
@@ -37,12 +38,15 @@ export async function executeKernelCommand(command: string): Promise<string> {
   });
 }
 
-async function getPath(command: string, notificationMessage: string): Promise<string> {
+async function getPath(
+  command: string,
+  notificationMessage: string
+): Promise<string> {
   try {
     return await executeKernelCommand(command);
   } catch (error) {
     Notification.error(notificationMessage, {
-      autoClose: 5000,
+      autoClose: 5000
     });
     console.error((error as Error).message);
     throw error;
@@ -89,6 +93,6 @@ export async function getDeployableTemplatesPath(): Promise<string> {
   `;
   return getPath(
     cmdTemplatesPath,
-    'Failed to find templates/ directory. Maybe it is not in the project folder. Check the console for more details.'
+    'Failed to find deployable_templates/ directory. Maybe it is not in the project folder. Check the console for more details.'
   );
 }
