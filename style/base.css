@@ -27,6 +27,15 @@
   resize: none;
 }
 
+.jp-Dialog-header {
+  font-weight: 500;
+  color: #f6a83a;
+}
+
+.jp-Dialog p {
+  font-weight: 500;
+}
+
 .dialog-content {
   padding: 16px;
 }
@@ -67,7 +76,7 @@
   color: white;
 }
 
-/* Styles for the success deployment */
+/* Styles for the loaders */
 .loader-container {
   display: flex;
   justify-content: center;
@@ -78,22 +87,32 @@
 .loader {
   width: 80px;
   height: 80px;
-  border: 8px solid rgb(0 0 0 / 10%);
-  border-left-color: var(--jp-brand-color1);
+  border: 8px solid #0000001a;
+  border-left-color: #f6a83a /* var(--jp-brand-color1) */;
   border-radius: 50%;
   animation: spin 1s linear infinite;
+}
+
+.mini-loader {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #f3f3f3;
+  border-top: 2px solid #f6a83a /* #3498db */;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  display: inline-block;
 }
 
 @keyframes spin {
   0% {
     transform: rotate(0deg);
   }
-
   100% {
     transform: rotate(360deg);
   }
 }
 
+/* Styles for the success deployment */
 .success-container {
   display: flex;
   flex-direction: column;
@@ -110,7 +129,7 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  box-shadow: 0 4px 8px rgb(0 0 0 / 10%);
+  box-shadow: 0 4px 8px #0000001a;
   margin-bottom: 20px;
 }
 
@@ -161,4 +180,51 @@
 .child-buttons:focus,
 .child-buttons.active {
   background-color: #f6a83a;
+}
+
+/* Styles for the forms */
+form {
+  margin-bottom: 8px;
+}
+
+form label,
+.images-label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 2px;
+  margin-top: 6px;
+}
+
+.cm-editor,
+input {
+  line-height: var(--jp-code-line-height);
+  font-size: var(--jp-code-font-size);
+  font-family: var(--jp-code-font-family);
+  border: 0;
+  padding: 3px 10px 3px 10px;
+  outline-color: #f6a83a;
+}
+
+input {
+  background: var(--jp-cell-editor-background);
+}
+
+.dropdown,
+select {
+  border: none;
+  display: block;
+  font-size: var(--jp-ui-font-family);
+  height: 24px;
+  padding: 0 25px 0 10px;
+  margin-top: 6px;
+}
+
+.dropdown:hover,
+select:hover {
+  background-color: var(--jp-layout-color2);
+}
+
+.dropdown:focus-visible,
+select:focus-visible {
+  outline-color: #f6a83a;
 }

@@ -38,6 +38,11 @@ interface IDeployInfo {
   childs: string[];
 }
 
+interface IRecipe {
+  name: string;
+  childs: string[];
+}
+
 interface ITemplateInput {
   type: string;
   description: string;
@@ -102,6 +107,36 @@ const deployInfo: IDeployInfo = {
   childs: []
 };
 
+const recipes: IRecipe[] = [
+  {
+    name: 'Simple-node-disk',
+    childs: ['galaxy', 'ansible_tasks', 'noderedvm', 'minio_compose']
+  },
+  {
+    name: 'Slurm',
+    childs: ['slurm_cluster', 'slurm_elastic', 'slurm_galaxy', 'docker_cluster']
+  },
+  {
+    name: 'Kubernetes',
+    childs: [
+      'kubernetes',
+      'kubeapps',
+      'prometheus',
+      'minio_compose',
+      'noderedvm',
+      'influxdb',
+      'argo'
+    ]
+  }
+];
+
+const providers = {
+  EGI: { id: 'egi', deploymentType: 'EGI' },
+  OpenStack: { id: 'ost', deploymentType: 'OpenStack' },
+  OpenNebula: { id: 'one', deploymentType: 'OpenNebula' },
+  EC2: { id: 'ec2', deploymentType: 'EC2' }
+};
+
 let imageOptions: { uri: string; name: string }[] = [];
 
 let deploying = false; // Flag to prevent multiple deployments at the same time
@@ -111,13 +146,10 @@ let deploying = false; // Flag to prevent multiple deployments at the same time
 //*****************//
 
 async function openDeploymentDialog(): Promise<void> {
-  // Create a container element for the dialog content
   const dialogContent = document.createElement('div');
 
-  // Call deployChooseProvider to append buttons to dialogContent
   deployChooseProvider(dialogContent);
 
-  // Create a widget from the dialog content
   const contentWidget = new Widget({ node: dialogContent });
 
   const dialog = new Dialog({
@@ -126,7 +158,7 @@ async function openDeploymentDialog(): Promise<void> {
     buttons: []
   });
 
-  dialog.launch()
+  dialog.launch();
 }
 
 const createButton = (
@@ -136,25 +168,14 @@ const createButton = (
   const button = document.createElement('button');
   button.textContent = label;
   button.className = 'jp-Button';
-  button.addEventListener('click', onClick);
 
-  // Check if the button is 'Back' or 'Next/Deploy'
-  if (label === 'Back' || label === 'Next' || label === 'Deploy') {
+  // Add footer-button class for specific buttons
+  if (['Back', 'Next', 'Deploy'].includes(label)) {
     button.classList.add('footer-button');
   }
 
+  button.addEventListener('click', onClick);
   return button;
-};
-
-const clearDialogElements = (dialogBody: HTMLElement): void => {
-  Array.from(dialogBody.children).forEach(child => {
-    if (
-      !child.classList.contains('recipe-button') &&
-      !child.classList.contains('back-button')
-    ) {
-      dialogBody.removeChild(child);
-    }
-  });
 };
 
 const addFormInput = (
@@ -163,7 +184,7 @@ const addFormInput = (
   inputId: string,
   value: string = '',
   type: string = 'text',
-  p0?: string
+  defaultValue?: string
 ): void => {
   const label = document.createElement('label');
   label.textContent = labelText;
@@ -173,8 +194,9 @@ const addFormInput = (
   input.type = type;
   input.id = inputId;
   input.value = value;
-  form.appendChild(input);
+  input.classList.add('jp-InputArea-editor', 'cm-editor');
 
+  form.appendChild(input);
   form.appendChild(document.createElement('br'));
 };
 
@@ -234,10 +256,15 @@ async function createImagesDropdown(
     // Clear the dropdown container before appending new content
     dropdownContainer.innerHTML = '';
 
+    const label = document.createElement('label');
+    label.textContent = 'Images:';
+    label.classList.add('images-label');
+    dropdownContainer.appendChild(label);
+
     // Create dropdown menu with image options
     const select = document.createElement('select');
     select.id = 'imageDropdown';
-
+    select.classList.add('dropdown');
     imageOptions.forEach(image => {
       const option = document.createElement('option');
       option.value = image.uri;
@@ -272,13 +299,6 @@ async function mergeTOSCARecipes(
             Object.entries(template.inputs).forEach(([inputName, input]) => {
               if (typeof input === 'object' && input !== null) {
                 const inputValue = (input as ITemplateInput).value;
-
-                console.log(
-                  'Merging input:',
-                  inputName,
-                  'with value:',
-                  inputValue
-                );
 
                 // Merge or add inputs in the constant template
                 if (inputName in mergedTemplate.topology_template.inputs) {
@@ -326,7 +346,7 @@ async function mergeTOSCARecipes(
     return mergedTemplate;
   } catch (error) {
     console.error('Error merging TOSCA recipes:', error);
-    return JSON.parse(JSON.stringify(parsedConstantTemplate)); // Return a copy of the parsed constant template
+    return JSON.parse(JSON.stringify(parsedConstantTemplate));
   }
 }
 
@@ -337,20 +357,15 @@ async function createChildsForm(
   buttonsContainer: HTMLElement
 ) {
   const templatesPath = await getDeployableTemplatesPath();
-
-  // Create form element
-  const form = document.createElement('form');
-  form.id = `form-${app.toLowerCase()}`;
-
-  // Load YAML file asynchronously
   const contentsManager = new ContentsManager();
+
+  // Load YAML content
   const file = await contentsManager.get(
     `${templatesPath}/${app.toLowerCase()}.yaml`
   );
 
-  const yamlContent = file.content as string;
-
   // Parse YAML content
+  const yamlContent = file.content as string;
   const yamlData: any = jsyaml.load(yamlContent);
   const metadata = yamlData.metadata;
   const templateName = metadata.template_name;
@@ -358,36 +373,36 @@ async function createChildsForm(
   const nodeTemplates = yamlData.topology_template.node_templates;
   const outputs = yamlData.topology_template.outputs;
 
-  // Create button for the app
+  // Create child button
   const appButton = document.createElement('button');
   appButton.className = 'jp-Button child-buttons';
   appButton.textContent = templateName;
 
-  // Show form for the selected app when clicked
+  // Show form for the selected child when clicked
   appButton.addEventListener('click', event => {
-    event.preventDefault(); // Prevent the default form submission
+    event.preventDefault();
     Array.from(deployDialog.querySelectorAll('form')).forEach(form => {
       form.style.display = 'none';
     });
     form.style.display = 'block';
   });
 
-  // Append button to buttons container
   buttonsContainer.appendChild(appButton);
 
-  // Append form to dialog
+  // Create form
+  const form = document.createElement('form');
+  form.id = `form-${app.toLowerCase()}`;
   deployDialog.appendChild(form);
 
-  // Show the form for the first app by default
-  if (index !== 0) {
-    form.style.display = 'none';
-  }
+  // Hide all forms except the first one. Show the form for the first child by default
+  if (index !== 0) form.style.display = 'none';
 
-  // Extract fields from YAML content and create form inputs
+  // Create input fields from YAML content
   if (inputs) {
     Object.entries(inputs).forEach(([key, input]) => {
       const description = (input as any).description;
       const constraints = (input as any).constraints;
+
       const inputField = document.createElement(
         constraints && constraints.length > 0 && constraints[0].valid_values
           ? 'select'
@@ -475,7 +490,7 @@ async function selectImage(obj: IDeployInfo): Promise<string> {
             fi
             `;
 
-  console.log('cmd', cmd);
+  console.log('Get cloud images:', cmd);
   return cmd;
 }
 
@@ -488,7 +503,7 @@ const getEGIToken = async () => {
   const kernel = await kernelManager.startNew();
   const future = kernel.requestExecute({ code });
 
-  return new Promise((resolve, reject) => {
+  return new Promise(resolve => {
     future.onIOPub = async msg => {
       const content = msg.content as any;
       const outputText =
@@ -518,7 +533,7 @@ async function deployIMCommand(
             echo '${mergedTemplate}' > ${deployedTemplatePath}
           `;
 
-  // Command to create the IM-cli credentials
+  // Create the IM-cli credentials based on deployment type
   let authContent = `id = im; type = InfrastructureManager; username = ${obj.IMuser}; password = ${obj.IMpass};\n`;
   authContent += `id = ${obj.id}; type = ${obj.deploymentType}; host = ${obj.host}; `;
 
@@ -549,9 +564,12 @@ async function deployIMCommand(
   return cmd;
 }
 
-async function saveToInfrastructureList(obj: IInfrastructureData) {
+async function saveToInfrastructureList(
+  obj: IInfrastructureData
+): Promise<string> {
   const infrastructuresListPath = await getInfrastructuresListPath();
-  // Construct the bash command
+
+  // Bash command to update the infrastructuresList JSON
   const cmd = `%%bash
               PWD=$(pwd)
               existingJson=$(cat ${infrastructuresListPath})
@@ -576,105 +594,63 @@ generateIMCredentials().then(() => {
 });
 
 const deployChooseProvider = (dialogBody: HTMLElement): void => {
-  // Clear dialog body
   dialogBody.innerHTML = '';
 
-  // Create paragraph element for instructions
   const paragraph = document.createElement('p');
   paragraph.textContent = 'Select infrastructure provider:';
   dialogBody.appendChild(paragraph);
 
   // Create buttons for each provider
-  const providers = ['OpenNebula', 'EC2', 'OpenStack', 'EGI'];
-  providers.forEach(provider => {
+  Object.keys(providers).forEach(provider => {
+    const providerData = providers[provider as keyof typeof providers];
     const button = createButton(provider, () => {
-      switch (provider) {
-        case 'EC2':
-          deployInfo.id = 'ec2';
-          deployInfo.deploymentType = 'EC2';
-          break;
-        case 'OpenNebula':
-          deployInfo.id = 'one';
-          deployInfo.deploymentType = 'OpenNebula';
-          break;
-        case 'OpenStack':
-          deployInfo.id = 'ost';
-          deployInfo.deploymentType = 'OpenStack';
-          break;
-        case 'EGI':
-          deployInfo.id = 'egi';
-          deployInfo.deploymentType = 'EGI';
-          break;
-        default:
-          console.error('Unsupported provider:', provider);
-          return;
-      }
+      deployInfo.id = providerData.id;
+      deployInfo.deploymentType = providerData.deploymentType;
 
       deployRecipeType(dialogBody);
       console.log(`Provider ${provider} selected`);
       console.log('deployInfo:', deployInfo);
     });
-
     dialogBody.appendChild(button);
   });
 };
 
 const deployRecipeType = (dialogBody: HTMLElement): void => {
-  // Clear dialog body
   dialogBody.innerHTML = '';
 
-  // Create paragraph element for instructions
   const paragraph = document.createElement('p');
   paragraph.textContent = 'Select recipe type:';
   dialogBody.appendChild(paragraph);
 
-  // Define recipes and their corresponding child elements
-  const recipes = [
-    {
-      name: 'Simple-node-disk',
-      childs: ['galaxy', 'ansible_tasks', 'noderedvm', 'minio_compose']
-    },
-    {
-      name: 'Slurm',
-      childs: [
-        'slurm_cluster',
-        'slurm_elastic',
-        'slurm_galaxy',
-        'docker_cluster'
-      ]
-    },
-    {
-      name: 'Kubernetes',
-      childs: [
-        'kubernetes',
-        'kubeapps',
-        'prometheus',
-        'minio_compose',
-        'noderedvm',
-        'influxdb',
-        'argo'
-      ]
-    }
-  ];
-
-  const buttonContainer = document.createElement('div');
-  buttonContainer.className = 'footer-button-container';
-
-  // Create buttons for each recipe type
   recipes.forEach(recipe => {
-    const button = createButton(recipe.name, () => {
-      clearDialogElements(dialogBody);
+    // Create buttons for each recipe type
+    const button = createButton(recipe.name, async () => {
+      // Remove all children except buttons
+      Array.from(dialogBody.children).forEach(child => {
+        if (
+          !child.classList.contains('recipe-button') &&
+          !child.classList.contains('back-button')
+        ) {
+          dialogBody.removeChild(child);
+        }
+      });
+
       deployInfo.recipe = recipe.name;
-      createCheckboxesForChilds(dialogBody, recipe.childs);
+
+      await createCheckboxesForChilds(dialogBody, recipe.childs);
     });
     button.classList.add('recipe-button');
     dialogBody.appendChild(button);
   });
 
-  // Create a back button
-  const backBtn = createButton('Back', () => deployChooseProvider(dialogBody));
-  backBtn.classList.add('back-button');
-  buttonContainer.appendChild(backBtn);
+  const backButton = createButton('Back', () => {
+    deployChooseProvider(dialogBody);
+  });
+  backButton.classList.add('back-button');
+
+  const buttonContainer = document.createElement('div');
+  buttonContainer.classList.add('footer-button-container');
+  buttonContainer.appendChild(backButton);
 
   dialogBody.appendChild(buttonContainer);
 };
@@ -701,7 +677,6 @@ const createCheckboxesForChilds = async (
     const file = await contentsManager.get(
       `${templatesPath}/${child.toLowerCase()}.yaml`
     );
-
     const yamlContent = file.content as string;
 
     // Parse YAML content
@@ -751,7 +726,7 @@ const createCheckboxesForChilds = async (
   const backBtn = createButton('Back', () => deployChooseProvider(dialogBody));
   backBtn.classList.add('back-button');
   buttonContainer.appendChild(backBtn);
-  // Create "Next" button
+
   const nextButton = createButton('Next', () => {
     // Populate deployInfo.childs
     const selectedChilds = Array.from(
@@ -760,7 +735,6 @@ const createCheckboxesForChilds = async (
     deployInfo.childs = selectedChilds;
     deployProviderCredentials(dialogBody);
   });
-
   buttonContainer.appendChild(nextButton);
 
   dialogBody.appendChild(buttonContainer);
@@ -834,7 +808,7 @@ const deployProviderCredentials = async (
   const nextButton = createButton('Next', async () => {
     const form = dialogBody.querySelector('form'); // Get the form element
     const inputs = form?.querySelectorAll('input'); // Get all input fields in the form
-  
+
     // Loop through each input and check if it is empty
     let allFieldsFilled = true;
     inputs?.forEach(input => {
@@ -842,7 +816,7 @@ const deployProviderCredentials = async (
         allFieldsFilled = false;
       }
     });
-  
+
     // Trigger error if any field is empty
     if (!allFieldsFilled) {
       Notification.error(
@@ -948,7 +922,11 @@ async function deployInfraConfiguration(
   dropdownContainer.id = 'dropdownContainer';
   dialogBody.appendChild(dropdownContainer);
 
-  // Create the next button and disable it initially
+  // Add a mini loader to the dropdown container
+  const loader = document.createElement('div');
+  loader.className = 'mini-loader';
+  dropdownContainer.appendChild(loader);
+
   const nextBtn = createButton(
     deployInfo.childs.length === 0 ? 'Deploy' : 'Next',
     async () => {
@@ -997,8 +975,11 @@ async function deployInfraConfiguration(
     try {
       // Execute the deployment command
       const outputText = await executeKernelCommand(cmdImageNames);
+
+      dropdownContainer.removeChild(loader); // Remove the loader
+
       await createImagesDropdown(outputText, dropdownContainer); // Pass the container to hold the dropdown
-  } catch (error) {
+    } catch (error) {
       console.error('Error executing deployment command:', error);
     }
   }
@@ -1016,41 +997,43 @@ async function deployInfraConfiguration(
 const deployChildsConfiguration = async (
   dialogBody: HTMLElement
 ): Promise<void> => {
-  // Clear dialog
   dialogBody.innerHTML = '';
 
   const childs = deployInfo.childs;
-
-  // Container for buttons
   const buttonsContainer = document.createElement('div');
   buttonsContainer.id = 'buttons-container';
   dialogBody.appendChild(buttonsContainer);
 
+  // Create forms for child configurations
   const forms = await Promise.all(
     childs.map((app, index) =>
       createChildsForm(app, index, dialogBody, buttonsContainer)
     )
   );
 
-  const buttonContainer = document.createElement('div');
-  buttonContainer.className = 'footer-button-container';
-
+  // Collect node templates and outputs from the forms
   const nodeTemplates = forms.map(form => form.nodeTemplates);
   const outputs = forms.map(form => form.outputs);
+
+  // Create footer buttons
+  const buttonContainer = document.createElement('div');
+  buttonContainer.className = 'footer-button-container';
 
   const backBtn = createButton('Back', () =>
     deployInfraConfiguration(dialogBody)
   );
+
   const nextButton = createButton('Deploy', async () => {
     const templatesPath = await getDeployableTemplatesPath();
     const contentsManager = new ContentsManager();
+
     const userInputs = (
       await Promise.all(
         forms.map(async formData => {
           const form = formData.form;
           const childName = form.id.replace('form-', '');
 
-          // Fetch YAML content
+          // Fetch YAML content for the form
           const file = await contentsManager.get(
             `${templatesPath}/${childName}.yaml`
           );
@@ -1058,7 +1041,6 @@ const deployChildsConfiguration = async (
           const yamlData: any = jsyaml.load(yamlContent);
           const recipeInputs = yamlData.topology_template.inputs;
 
-          // Check if recipeInputs is not null or undefined
           if (recipeInputs) {
             // Create an object to hold input structure and values
             const inputsWithValues: {
@@ -1068,6 +1050,7 @@ const deployChildsConfiguration = async (
                 value: any;
               };
             } = {};
+
             Object.entries(recipeInputs).forEach(([inputName, input]) => {
               const defaultValue = (input as any).default || '';
               const inputElement = form.querySelector<HTMLInputElement>(
@@ -1089,11 +1072,10 @@ const deployChildsConfiguration = async (
               outputs: formData.outputs
             };
           } else {
-            // Handle case where recipeInputs is null or undefined
             console.error(
               `Error: recipeInputs is null or undefined for ${childName}.yaml`
             );
-            return null; // or handle the error in another appropriate way
+            return null;
           }
         })
       )
@@ -1102,10 +1084,8 @@ const deployChildsConfiguration = async (
     deployFinalRecipe(dialogBody, userInputs, nodeTemplates, outputs);
   });
 
-  // Set dialog buttons
   buttonContainer.appendChild(backBtn);
   buttonContainer.appendChild(nextButton);
-
   dialogBody.appendChild(buttonContainer);
 };
 
@@ -1115,10 +1095,8 @@ async function deployFinalRecipe(
   nodeTemplates: any[] = [],
   outputs: any[] = []
 ): Promise<void> {
-  // Clear the dialog body
   dialogBody.innerHTML = '';
 
-  // Ensure only one deployment occurs at a time
   if (deploying) {
     Notification.error('Previous deploy has not finished.', {
       autoClose: 5000
@@ -1135,12 +1113,12 @@ async function deployFinalRecipe(
     );
     const yamlContent = file.content;
     const parsedTemplate = jsyaml.load(yamlContent) as any;
-  
+
     // Add infrastructure name and a hash to the metadata
     const hash = await computeHash(JSON.stringify(deployInfo));
     parsedTemplate.metadata = parsedTemplate.metadata || {};
     parsedTemplate.metadata.infra_name = `jupyter_${hash}`;
-  
+
     // Populate the template with worker values
     const workerInputs = parsedTemplate.topology_template.inputs;
     Object.keys(deployInfo.worker).forEach(key => {
@@ -1149,7 +1127,7 @@ async function deployFinalRecipe(
       };
       workerInputs[key].default = deployInfo.worker[key];
     });
-  
+
     // Merge templates
     const mergedTemplate = await mergeTOSCARecipes(
       parsedTemplate,
@@ -1158,30 +1136,30 @@ async function deployFinalRecipe(
       outputs
     );
     const mergedYamlContent = jsyaml.dump(mergedTemplate);
-  
-    // Create deploy command
+
     const cmdDeploy = await deployIMCommand(deployInfo, mergedYamlContent);
-  
-    // Show loading spinner
+
     dialogBody.innerHTML =
       '<div class="loader-container"><div class="loader"></div></div>';
-  
+
     const outputText = await executeKernelCommand(cmdDeploy);
     handleFinalDeployOutput(outputText, dialogBody);
   } catch (error) {
     console.error('Error during deployment:', error);
     deploying = false;
-  }  
+  }
 }
 
 const handleFinalDeployOutput = async (
   output: string | undefined,
   dialogBody: HTMLElement
 ): Promise<void> => {
-  while (!output) {
-    // Wait 1 second before checking again until the output is ready
-    await new Promise(resolve => setTimeout(resolve, 1000));
+  if (!output) {
+    return;
   }
+
+  deploying = false;
+  dialogBody.innerHTML = '';
 
   if (output.toLowerCase().includes('error')) {
     console.error('Error deploying infrastructure:', output);
@@ -1191,11 +1169,19 @@ const handleFinalDeployOutput = async (
         autoClose: 5000
       }
     );
-    deploying = false;
+
     deployInfo.childs.length === 0
       ? deployInfraConfiguration(dialogBody)
       : deployChildsConfiguration(dialogBody);
   } else {
+    dialogBody.innerHTML = `
+        <div class="success-container">
+          <div class="success-circle">
+            <i class="fas fa-check"></i>
+          </div>
+          <p>Infrastructure successfully deployed</p>
+        </div>
+      `;
     console.log('Infrastructure deployed:', output);
     Notification.success(output, {
       autoClose: 5000
@@ -1225,24 +1211,14 @@ const handleFinalDeployOutput = async (
 
     const cmdSave = await saveToInfrastructureList(infrastructureData);
 
-// Execute kernel command to save data
-try {
-    const outputText = await executeKernelCommand(cmdSave);
-    console.log('Data saved to infrastructuresList.json:', outputText);
-} catch (error) {
-    console.error('Error executing kernel command:', error);
-    deploying = false;
-}
-    // Show the success circle
-    dialogBody.innerHTML = `
-                <div class="success-container">
-                <div class="success-circle">
-                <i class="fas fa-check"></i>
-                </div>
-                <p>Infrastructure successfully deployed</p>
-                </div>
-                `;
-    deploying = false;
+    // Execute kernel command to save the data
+    try {
+      const outputText = await executeKernelCommand(cmdSave);
+      console.log('Data saved to infrastructuresList.json:', outputText);
+    } catch (error) {
+      console.error('Error executing kernel command:', error);
+      deploying = false;
+    }
   }
 };
 
