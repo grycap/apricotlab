@@ -187,7 +187,8 @@ async function fetchInfrastructureData(
             stateIndex !== -1 && stateIndex < stateWords.length - 1
               ? stateWords[stateIndex + 1].trim()
               : 'Error';
-        } else { // dataType is 'ip'
+        } else {
+          // dataType is 'ip'
           // Extract the IP from the output (get the last word)
           const ipWords = outputData.trim().split(' ');
           const ip = ipWords[ipWords.length - 1];

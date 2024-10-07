@@ -382,7 +382,7 @@ async function createChildsForm(
   appButton.addEventListener('click', event => {
     event.preventDefault();
     Array.from(deployDialog.querySelectorAll('form')).forEach(form => {
-      form.style.display = 'none';
+      form.style.display = 'none'; // Hide all forms except the first one
     });
     form.style.display = 'block';
   });
@@ -394,7 +394,7 @@ async function createChildsForm(
   form.id = `form-${app.toLowerCase()}`;
   deployDialog.appendChild(form);
 
-  // Hide all forms except the first one. Show the form for the first child by default
+  // Show the form for the first child by default
   if (index !== 0) form.style.display = 'none';
 
   // Create input fields from YAML content
@@ -429,9 +429,7 @@ async function createChildsForm(
       label.htmlFor = key;
       label.textContent = `${description}:`;
 
-      form.appendChild(document.createElement('br'));
       form.appendChild(label);
-      form.appendChild(document.createElement('br'));
       form.appendChild(inputField);
     });
   } else {
@@ -914,9 +912,6 @@ async function deployInfraConfiguration(
     '1'
   );
 
-  const buttonContainer = document.createElement('div');
-  buttonContainer.className = 'footer-button-container';
-
   // Create a container for the dropdown
   const dropdownContainer = document.createElement('div');
   dropdownContainer.id = 'dropdownContainer';
@@ -926,6 +921,15 @@ async function deployInfraConfiguration(
   const loader = document.createElement('div');
   loader.className = 'mini-loader';
   dropdownContainer.appendChild(loader);
+
+  const buttonContainer = document.createElement('div');
+  buttonContainer.className = 'footer-button-container';
+  dialogBody.appendChild(buttonContainer);
+
+  const backBtn = createButton('Back', () =>
+    deployProviderCredentials(dialogBody)
+  );
+  buttonContainer.appendChild(backBtn);
 
   const nextBtn = createButton(
     deployInfo.childs.length === 0 ? 'Deploy' : 'Next',
@@ -984,14 +988,7 @@ async function deployInfraConfiguration(
     }
   }
 
-  const backBtn = createButton('Back', () =>
-    deployProviderCredentials(dialogBody)
-  );
-
-  buttonContainer.appendChild(backBtn);
   buttonContainer.appendChild(nextBtn);
-
-  dialogBody.appendChild(buttonContainer);
 }
 
 const deployChildsConfiguration = async (

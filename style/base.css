@@ -25,6 +25,8 @@
 /* Styles for the dialog */
 .jp-Dialog-content {
   resize: none;
+  max-width: 2000px !important;
+  max-height: 1000px !important;
 }
 
 .jp-Dialog-header {
@@ -34,16 +36,6 @@
 
 .jp-Dialog p {
   font-weight: 500;
-}
-
-.dialog-content {
-  padding: 16px;
-}
-
-.dialog-title {
-  font-size: 24px;
-  font-weight: bold;
-  margin-bottom: 10px;
 }
 
 /* Styles for the table */
@@ -88,7 +80,7 @@
   width: 80px;
   height: 80px;
   border: 8px solid #0000001a;
-  border-left-color: #f6a83a /* var(--jp-brand-color1) */;
+  border-left-color: #f6a83a;
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -97,7 +89,7 @@
   width: 20px;
   height: 20px;
   border: 2px solid #f3f3f3;
-  border-top: 2px solid #f6a83a /* #3498db */;
+  border-top: 2px solid #f6a83a;
   border-radius: 50%;
   animation: spin 1s linear infinite;
   display: inline-block;
@@ -167,6 +159,7 @@
 /* Styles for the childs buttons */
 .child-buttons {
   margin-inline: 3px;
+  margin-bottom: 20px;
   min-height: 15px !important;
   height: 22px !important;
   color: var(--jp-ui-font-color1);
@@ -205,8 +198,9 @@ input {
   outline-color: #f6a83a;
 }
 
-input {
+form input {
   background: var(--jp-cell-editor-background);
+  width: 90%;
 }
 
 .dropdown,
