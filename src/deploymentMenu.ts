@@ -801,15 +801,16 @@ const deployProviderCredentials = async (
   const buttonContainer = document.createElement('div');
   buttonContainer.className = 'footer-button-container';
 
-  const backBtn = createButton('Back', () => { deployRecipeType(dialogBody);
-  deployInfo.host = '';
-  deployInfo.tenant = '';
-  deployInfo.username = '';
-  deployInfo.password = '';
-  deployInfo.authVersion = '';
-  deployInfo.domain = '';
-  deployInfo.vo = '';
-});
+  const backBtn = createButton('Back', () => {
+    deployRecipeType(dialogBody);
+    deployInfo.host = '';
+    deployInfo.tenant = '';
+    deployInfo.username = '';
+    deployInfo.password = '';
+    deployInfo.authVersion = '';
+    deployInfo.domain = '';
+    deployInfo.vo = '';
+  });
   const nextButton = createButton('Next', async () => {
     const form = dialogBody.querySelector('form'); // Get the form element
     const inputs = form?.querySelectorAll('input'); // Get all input fields in the form
@@ -870,7 +871,9 @@ const deployProviderCredentials = async (
   dialogBody.appendChild(buttonContainer);
 };
 
-async function deployInfraConfiguration(dialogBody: HTMLElement): Promise<void> {
+async function deployInfraConfiguration(
+  dialogBody: HTMLElement
+): Promise<void> {
   dialogBody.innerHTML = '';
   const form = document.createElement('form');
   dialogBody.appendChild(form);
@@ -931,7 +934,9 @@ async function deployInfraConfiguration(dialogBody: HTMLElement): Promise<void> 
     deployInfo.childs.length === 0 ? 'Deploy' : 'Next',
     async () => {
       try {
-        const imageDropdown = document.getElementById('imageDropdown') as HTMLSelectElement;
+        const imageDropdown = document.getElementById(
+          'imageDropdown'
+        ) as HTMLSelectElement;
 
         // Check if the dropdown exists
         if (imageDropdown) {
@@ -999,7 +1004,6 @@ async function deployInfraConfiguration(dialogBody: HTMLElement): Promise<void> 
 
       await createImagesDropdown(outputText, dropdownContainer); // Pass the container to hold the dropdown
       nextBtn.disabled = false;
-    
     } catch (error) {
       console.error('Error executing deployment command:', error);
     }
@@ -1232,12 +1236,12 @@ const handleFinalDeployOutput = async (
       deploying = false;
     }
     deployInfo.host = '';
-  deployInfo.tenant = '';
-  deployInfo.username = '';
-  deployInfo.password = '';
-  deployInfo.authVersion = '';
-  deployInfo.domain = '';
-  deployInfo.vo = '';
+    deployInfo.tenant = '';
+    deployInfo.username = '';
+    deployInfo.password = '';
+    deployInfo.authVersion = '';
+    deployInfo.domain = '';
+    deployInfo.vo = '';
   }
 };
 
