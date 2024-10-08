@@ -20,7 +20,6 @@ interface IDeployInfo {
   tenant: string;
   username: string;
   password: string;
-  port: string;
   infName: string;
   authVersion: string;
   domain: string;
@@ -90,7 +89,6 @@ const deployInfo: IDeployInfo = {
   tenant: '',
   username: '',
   password: '',
-  port: '',
   infName: 'infra-name',
   authVersion: '',
   domain: '',
@@ -234,6 +232,7 @@ async function createImagesDropdown(
 
   // Check if the output contains "error" in the message
   if (output.toLowerCase().includes('error')) {
+    console.error(output);
     Notification.error('No OS images found. Bad provider credentials.', {
       autoClose: 5000
     });
@@ -533,15 +532,16 @@ async function deployIMCommand(
 
   // Create the IM-cli credentials based on deployment type
   let authContent = `id = im; type = InfrastructureManager; username = ${obj.IMuser}; password = ${obj.IMpass};\n`;
-  authContent += `id = ${obj.id}; type = ${obj.deploymentType}; host = ${obj.host}; `;
+  authContent += `id = ${obj.id}; type = ${obj.deploymentType}; `;
 
-  if (obj.deploymentType === 'OpenNebula' || obj.deploymentType === 'EC2') {
-    authContent += `username = ${obj.username}; password = ${obj.password}`;
+  if (obj.deploymentType === 'EC2') {
+    authContent += `username = ${obj.username}; password = ${obj.password}; `;
+  } else if (obj.deploymentType === 'OpenNebula') {
+    authContent += `username = ${obj.username}; password = ${obj.password}; host = ${obj.host}; `;
   } else if (obj.deploymentType === 'OpenStack') {
-    authContent += `username = ${obj.username}; password = ${obj.password}; tenant = ${obj.tenant}; auth_version = ${obj.authVersion};
-                domain = ${obj.domain}`;
+    authContent += `username = ${obj.username}; password = ${obj.password}; tenant = ${obj.tenant}; auth_version = ${obj.authVersion}; domain = ${obj.domain}; host = ${obj.host}; `;
   } else if (obj.deploymentType === 'EGI') {
-    authContent += `vo = ${obj.vo}; token = ${obj.EGIToken}`;
+    authContent += `vo = ${obj.vo}; token = ${obj.EGIToken}; host = ${obj.host}; `;
   }
 
   cmd += `echo -e "${authContent}" > $PWD/${pipeAuth} &
@@ -607,7 +607,6 @@ const deployChooseProvider = (dialogBody: HTMLElement): void => {
 
       deployRecipeType(dialogBody);
       console.log(`Provider ${provider} selected`);
-      console.log('deployInfo:', deployInfo);
     });
     dialogBody.appendChild(button);
   });
@@ -802,7 +801,15 @@ const deployProviderCredentials = async (
   const buttonContainer = document.createElement('div');
   buttonContainer.className = 'footer-button-container';
 
-  const backBtn = createButton('Back', () => deployRecipeType(dialogBody));
+  const backBtn = createButton('Back', () => { deployRecipeType(dialogBody);
+  deployInfo.host = '';
+  deployInfo.tenant = '';
+  deployInfo.username = '';
+  deployInfo.password = '';
+  deployInfo.authVersion = '';
+  deployInfo.domain = '';
+  deployInfo.vo = '';
+});
   const nextButton = createButton('Next', async () => {
     const form = dialogBody.querySelector('form'); // Get the form element
     const inputs = form?.querySelectorAll('input'); // Get all input fields in the form
@@ -863,9 +870,7 @@ const deployProviderCredentials = async (
   dialogBody.appendChild(buttonContainer);
 };
 
-async function deployInfraConfiguration(
-  dialogBody: HTMLElement
-): Promise<void> {
+async function deployInfraConfiguration(dialogBody: HTMLElement): Promise<void> {
   dialogBody.innerHTML = '';
   const form = document.createElement('form');
   dialogBody.appendChild(form);
@@ -912,16 +917,7 @@ async function deployInfraConfiguration(
     '1'
   );
 
-  // Create a container for the dropdown
-  const dropdownContainer = document.createElement('div');
-  dropdownContainer.id = 'dropdownContainer';
-  dialogBody.appendChild(dropdownContainer);
-
-  // Add a mini loader to the dropdown container
-  const loader = document.createElement('div');
-  loader.className = 'mini-loader';
-  dropdownContainer.appendChild(loader);
-
+  // Create a button container to hold Back and Next/Deploy buttons
   const buttonContainer = document.createElement('div');
   buttonContainer.className = 'footer-button-container';
   dialogBody.appendChild(buttonContainer);
@@ -935,9 +931,12 @@ async function deployInfraConfiguration(
     deployInfo.childs.length === 0 ? 'Deploy' : 'Next',
     async () => {
       try {
-        const selectedImageUri = (
-          document.getElementById('imageDropdown') as HTMLSelectElement
-        ).value;
+        const imageDropdown = document.getElementById('imageDropdown') as HTMLSelectElement;
+
+        // Check if the dropdown exists
+        if (imageDropdown) {
+          deployInfo.worker.image = imageDropdown.value;
+        }
 
         // Retrieve and parse form input values
         deployInfo.infName = getInputValue('infrastructureName');
@@ -952,7 +951,6 @@ async function deployInfraConfiguration(
         deployInfo.worker.num_gpus = parseInt(
           getInputValue('infrastructureGPUs')
         );
-        deployInfo.worker.image = selectedImageUri;
 
         // Check if we need to deploy final recipe or configure child components
         if (deployInfo.childs.length === 0) {
@@ -973,6 +971,23 @@ async function deployInfraConfiguration(
   );
 
   if (deployInfo.deploymentType !== 'EC2') {
+    nextBtn.disabled = true;
+  }
+  buttonContainer.appendChild(nextBtn);
+
+  // Create the dropdown container for non-EC2 types
+  if (deployInfo.deploymentType !== 'EC2') {
+    const dropdownContainer = document.createElement('div');
+    dropdownContainer.id = 'dropdownContainer';
+
+    // Add a mini loader to the dropdown container
+    const loader = document.createElement('div');
+    loader.className = 'mini-loader';
+    dropdownContainer.appendChild(loader);
+
+    // Insert the dropdown container above the button container
+    dialogBody.insertBefore(dropdownContainer, buttonContainer);
+
     // Create select image command
     const cmdImageNames = await selectImage(deployInfo);
 
@@ -980,15 +995,15 @@ async function deployInfraConfiguration(
       // Execute the deployment command
       const outputText = await executeKernelCommand(cmdImageNames);
 
-      dropdownContainer.removeChild(loader); // Remove the loader
+      dropdownContainer.removeChild(loader); // Remove the loader once done
 
       await createImagesDropdown(outputText, dropdownContainer); // Pass the container to hold the dropdown
+      nextBtn.disabled = false;
+    
     } catch (error) {
       console.error('Error executing deployment command:', error);
     }
   }
-
-  buttonContainer.appendChild(nextBtn);
 }
 
 const deployChildsConfiguration = async (
@@ -1216,6 +1231,13 @@ const handleFinalDeployOutput = async (
       console.error('Error executing kernel command:', error);
       deploying = false;
     }
+    deployInfo.host = '';
+  deployInfo.tenant = '';
+  deployInfo.username = '';
+  deployInfo.password = '';
+  deployInfo.authVersion = '';
+  deployInfo.domain = '';
+  deployInfo.vo = '';
   }
 };
 
