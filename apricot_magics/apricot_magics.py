@@ -141,6 +141,35 @@ class Apricot_Magics(Magics):
         except (CalledProcessError, FileNotFoundError):
             return None
 
+    def resolve_ssh_user(self, inf_id):
+        cmd_getinfo = [
+            'python3',
+            self.im_client_path,
+            'getinfo',
+            inf_id,
+            '-r',
+            'https://im.egi.eu/im',
+            '-a',
+            'auth-pipe',
+        ]
+        try:
+            # Run the command, capturing stdout
+            result = run(cmd_getinfo, stdout=PIPE, stderr=PIPE, check=True, text=True)
+            getinfo_output = result.stdout
+
+            # Find the line containing 'disk.0.os.credentials.username' and extract the user
+            ssh_user = None
+            for line in getinfo_output.splitlines():
+                if "disk.0.os.credentials.username" in line:
+                    ssh_user = line.split('=')[1].strip().split(' ')[0].strip("'")
+                    break
+            
+            return ssh_user if ssh_user else None
+
+        except CalledProcessError as e:
+            print(f"Error while running getinfo command: {e}")
+            return None
+
     ##################
     #     Magics     #
     ##################
@@ -272,7 +301,7 @@ class Apricot_Magics(Magics):
         ]
 
         # Print the information as a table using tabulate
-        print(tabulate(infrastructure_data, headers=['Name', 'Infrastructure ID', 'IP', 'State'], tablefmt='grid'))
+        print(tabulate(infrastructure_data, headers=['Infrastructure name', 'Infrastructure ID', 'IP Address', 'Status'], tablefmt='grid'))
 
         # Clean up auth-pipe file
         if os.path.exists('auth-pipe'):
@@ -372,8 +401,8 @@ class Apricot_Magics(Magics):
                 if line.strip().startswith("disk.0.image.url ="):
                     os_image = line.split("'")[1].strip()
 
-                if all((current_vm_id, ip_address, status, provider_type, os_image)):
-                    vm_info_list.append([current_vm_id, ip_address, status, provider_type, os_image])
+                if all((current_vm_id, ip_address, provider_type, os_image, status)):
+                    vm_info_list.append([current_vm_id, ip_address, provider_type, os_image, status])
                     # Reset variables for the next VM
                     current_vm_id, ip_address, status, provider_type, os_image = None, None, None, None, None
 
@@ -381,7 +410,7 @@ class Apricot_Magics(Magics):
             print(f"Error: {e.output.strip()}")
 
         # Print the information as a table using tabulate
-        print(tabulate(vm_info_list, headers=['VM ID', 'IP Address', 'Status', 'Provider', 'OS Image'], tablefmt='grid'))
+        print(tabulate(vm_info_list, headers=['VM ID', 'IP Address', 'Provider', 'OS Image', 'Status'], tablefmt='grid'))
         
         # Clean up auth-pipe file
         if os.path.exists('auth-pipe'):
@@ -429,7 +458,7 @@ class Apricot_Magics(Magics):
         for file in files:
             cmd_scp.append(file)
         # Add the destination path to the scp command
-        cmd_scp.append(f'root@{hostIP}:{destination}')
+        cmd_scp.append(f'cloudadm@{hostIP}:{destination}')
 
         # Execute scp command and capture output
         try:
@@ -484,7 +513,7 @@ class Apricot_Magics(Magics):
 
         # Add each remote file to the scp command
         for file in files:
-            cmd_scp.append(f'root@{hostIP}:{file}')
+            cmd_scp.append(f'cloudadm@{hostIP}:{file}')
 
         # Add the local destination path to the scp command
         cmd_scp.append(destination)
@@ -539,6 +568,12 @@ class Apricot_Magics(Magics):
                     print(e)
                     return "Failed"
                 
+                ssh_user = self.resolve_ssh_user(inf_id)
+
+                if not ssh_user:
+                    print(f"Error: Unable to resolve SSH user for infrastructure {inf_id}.")
+                    return "Failed"
+                
                 # Call generate_key function to extract private key content and host IP
                 private_key_content, host_ip = self.generate_key(inf_id, vm_id)
 
@@ -546,7 +581,7 @@ class Apricot_Magics(Magics):
                     print("Error: Unable to generate private key. Missing infrastructure ID or VM ID.")
                     return "Failed"
 
-                cmd_ssh = ['ssh', '-i', 'key.pem', '-o', 'StrictHostKeyChecking=no', f'root@{host_ip}'] + cmd_command
+                cmd_ssh = ['ssh', '-i', 'key.pem', '-o', 'StrictHostKeyChecking=no', f'{ssh_user}@{host_ip}'] + cmd_command
 
                 try:
                     result = run(cmd_ssh, stdout=PIPE, stderr=PIPE, universal_newlines=True)
