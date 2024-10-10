@@ -6,6 +6,8 @@ from pathlib import Path
 import os
 import json
 
+IM_URL = 'https://im.egi.eu/im'
+
 @magics_class
 class Apricot_Magics(Magics):
 
@@ -16,99 +18,6 @@ class Apricot_Magics(Magics):
     ########################
     #  Auxiliar functions  #
     ########################
-
-    def create_auth_pipe(self, infrastructure_id):
-        # Read the JSON data from the file
-        try:
-            with open(self.inf_list_path) as f:
-                data = json.load(f)
-        except FileNotFoundError:
-            raise FileNotFoundError(f"File not found: {self.inf_list_path}")
-        except json.JSONDecodeError:
-            raise ValueError(f"Error decoding JSON from file: {self.inf_list_path}")
-
-        # Find the infrastructure with the specified ID
-        found_infrastructure = None
-        for infrastructure in data.get('infrastructures', []):
-            if infrastructure.get('infrastructureID') == infrastructure_id:
-                found_infrastructure = infrastructure
-                break
-
-        if found_infrastructure is None:
-            raise ValueError(f"Infrastructure with ID {infrastructure_id} does not exist.")
-
-        # Construct auth-pipe content based on infrastructure type
-        auth_content = f"type = InfrastructureManager; username = {found_infrastructure['IMuser']}; password = {found_infrastructure['IMpass']};\n"
-        # Additional credentials based on infrastructure type
-        if found_infrastructure['type'] == "OpenStack":
-            auth_content += f"id = {found_infrastructure['id']}; type = {found_infrastructure['type']}; username = {found_infrastructure['user']}; password = {found_infrastructure['pass']}; host = {found_infrastructure['host']}; tenant = {found_infrastructure['tenant']}; auth_version = {found_infrastructure['authVersion']}; domain = {found_infrastructure['domain']}"
-        elif found_infrastructure['type'] == "OpenNebula":
-            auth_content += f"id = {found_infrastructure['id']}; type = {found_infrastructure['type']}; username = {found_infrastructure['user']}; password = {found_infrastructure['pass']}; host = {found_infrastructure['host']}"
-        elif found_infrastructure['type'] == "EC2":
-            auth_content += f"id = {found_infrastructure['id']}; type = {found_infrastructure['type']}; username = {found_infrastructure['user']}; password = {found_infrastructure['pass']}"
-        elif found_infrastructure['type'] == "EGI":
-            auth_content += f"id = {found_infrastructure['id']}; type = {found_infrastructure['type']}; host = {found_infrastructure['host']}; vo = {found_infrastructure['vo']}; token = {found_infrastructure['EGIToken']}"
-        
-        # Write auth-pipe content to a file
-        with open('auth-pipe', 'w') as auth_file:
-            auth_file.write(auth_content)
-
-        return
-
-    def generate_key(self, infrastructure_id, vm_id):
-        """ Generates private key and host IP """
-        private_key_content = None
-        host_ip = None
-
-        cmd_getvminfo = [
-            'python3',
-            self.im_client_path,
-            'getvminfo',
-            infrastructure_id,
-            vm_id,
-            '-r',
-            'https://im.egi.eu/im',
-            '-a',
-            'auth-pipe',
-        ]
-
-        try:
-            # Execute command and capture output
-            state_output = run(cmd_getvminfo, stdout=PIPE, stderr=PIPE, check=True, text=True).stdout
-            # Split the output by lines
-            state_lines = state_output.split('\n')
-
-            # Iterate over each line in the output to capture key and host IP
-            private_key_started = False
-            for line in state_lines:
-                if line.strip().startswith("disk.0.os.credentials.private_key ="):
-                    private_key_started = True
-                    private_key_content = line.split(" = ")[1].strip().strip("'") + '\n'
-                    continue
-                # If private key capture has started, capture lines until END RSA PRIVATE KEY
-                if private_key_started:
-                    private_key_content += line + '\n'
-                # Check if the line contains the end of the private key
-                if "END RSA PRIVATE KEY" in line:
-                    private_key_started = False
-
-                if line.strip().startswith("net_interface.1.ip ="):
-                    # Extract the host IP
-                    host_ip = line.split("'")[1].strip()
-                    break
-
-            if private_key_content:
-                with open("key.pem", "w") as key_file:
-                    key_file.write(private_key_content)
-
-                # Change permissions of key.pem to 600
-                os.chmod("key.pem", 0o600)
-
-            return private_key_content, host_ip
-
-        except CalledProcessError as e:
-            # If the subprocess call fails, return the error output
-            return None, None
 
     def load_paths(self):
         # Get the absolute path to the current file (apricot_magics.py)
@@ -127,7 +36,6 @@ class Apricot_Magics(Magics):
             raise FileNotFoundError(f"File not found: {self.deployedTemplate_path}")
         
         self.im_client_path = self.find_im_client()
-
         if not self.im_client_path:
             raise FileNotFoundError("im_client.py executable not found in PATH")
 
@@ -141,6 +49,109 @@ class Apricot_Magics(Magics):
         except (CalledProcessError, FileNotFoundError):
             return None
 
+    def load_json(self, path):
+        """Load a JSON file and handle errors."""
+        try:
+            with open(path) as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            raise ValueError(f"Error loading JSON from {path}: {e}")
+
+    def cleanup_files(self, *files):
+        for file in files:
+            if os.path.exists(file):
+                os.remove(file)
+
+    def execute_command(self, cmd):
+        """Execute a command and return stdout, or handle the output differently."""
+        try:
+            result = run(cmd, stdout=PIPE, stderr=PIPE, check=True, text=True)
+            return result.stdout  # Return only stdout
+        except CalledProcessError as e:
+            print(f"Command failed: {e.stderr}")
+            return "Fail"
+
+    def create_auth_pipe(self, infrastructure_id):
+        """ Create an auth pipe file with credentials based on the infrastructure type. """
+        data = self.load_json(self.inf_list_path)
+
+        # Find the infrastructure with the specified ID
+        infrastructure = None
+        for file_infrastructure in data.get('infrastructures', []):
+            if file_infrastructure.get('infrastructureID') == infrastructure_id:
+                infrastructure = file_infrastructure
+                break
+        
+        if not infrastructure:
+            raise ValueError(f"Infrastructure with ID {infrastructure_id} does not exist.")
+        
+        auth_content = [f"type = InfrastructureManager; username = {infrastructure['IMuser']}; password = {infrastructure['IMpass']};"]
+        infra_type = infrastructure['type']
+        
+        # Append credentials based on the infrastructure type
+        if infra_type == "OpenStack":
+            auth_content.append(f"id = {infrastructure['id']}; type = {infra_type}; username = {infrastructure['user']}; password = {infrastructure['pass']}; host = {infrastructure['host']}; tenant = {infrastructure['tenant']}; auth_version = {infrastructure['authVersion']}; domain = {infrastructure['domain']}")
+        elif infra_type == "OpenNebula":
+            auth_content.append(f"id = {infrastructure['id']}; type = {infra_type}; username = {infrastructure['user']}; password = {infrastructure['pass']}; host = {infrastructure['host']}")
+        elif infra_type == "EC2":
+            auth_content.append(f"id = {infrastructure['id']}; type = {infra_type}; username = {infrastructure['user']}; password = {infrastructure['pass']}")
+        elif infra_type == "EGI":
+            auth_content.append(f"id = {infrastructure['id']}; type = {infra_type}; host = {infrastructure['host']}; vo = {infrastructure['vo']}; token = {infrastructure['EGIToken']}")
+        
+        # Write auth-pipe content to a file
+        with open('auth-pipe', 'w') as auth_file:
+            auth_file.write("\n".join(auth_content))
+
+    def generate_key(self, infrastructure_id, vm_id):
+        """ Generates private key and host IP from infrastructure and VM info. """
+        cmd_getvminfo = [
+            'python3', self.im_client_path, 'getvminfo', infrastructure_id, vm_id, '-r', IM_URL, '-a', 'auth-pipe'
+        ]
+
+        try:
+            # Execute command and capture output
+            state_output = self.execute_command(cmd_getvminfo)
+            private_key_content, host_ip = None, None
+
+            if state_output:
+                private_key_content = self.extract_key(state_output)
+                host_ip = self.extract_host_ip(state_output)
+
+                # Save the private key to a file
+                if private_key_content:
+                    with open("key.pem", "w") as key_file:
+                        key_file.write(private_key_content)
+                    os.chmod("key.pem", 0o600)
+
+            return private_key_content, host_ip
+        except CalledProcessError as e:
+            return None, None
+
+    def extract_key(self, output):
+        """ Extract the private key from VM info. """
+        private_key_lines = []
+        capture_key = False
+
+        for line in output.splitlines():
+            if "disk.0.os.credentials.private_key =" in line:
+                capture_key = True
+                private_key_lines.append(line.split(" = ")[1].strip().strip("'"))
+                continue
+
+            if capture_key:
+                private_key_lines.append(line.strip())
+                if "END RSA PRIVATE KEY" in line:
+                    break
+
+        return "\n".join(private_key_lines) if private_key_lines else None
+
+    def extract_host_ip(self, output):
+        """ Extract the host IP from VM info. """
+        for line in output.splitlines():
+            if "net_interface.1.ip =" in line:
+                return line.split("'")[1].strip()
+        return None
+
     def resolve_ssh_user(self, inf_id):
         cmd_getinfo = [
             'python3',
@@ -148,27 +159,97 @@ class Apricot_Magics(Magics):
             'getinfo',
             inf_id,
             '-r',
-            'https://im.egi.eu/im',
+            IM_URL,
             '-a',
             'auth-pipe',
         ]
-        try:
-            # Run the command, capturing stdout
-            result = run(cmd_getinfo, stdout=PIPE, stderr=PIPE, check=True, text=True)
-            getinfo_output = result.stdout
 
-            # Find the line containing 'disk.0.os.credentials.username' and extract the user
-            ssh_user = None
-            for line in getinfo_output.splitlines():
-                if "disk.0.os.credentials.username" in line:
-                    ssh_user = line.split('=')[1].strip().split(' ')[0].strip("'")
-                    break
-            
-            return ssh_user if ssh_user else None
+        # Use execute_command to run the command and capture output
+        getinfo_output = self.execute_command(cmd_getinfo)
 
-        except CalledProcessError as e:
-            print(f"Error while running getinfo command: {e}")
+        # If there is no output, return None
+        if getinfo_output is None:
             return None
+
+        # Find the line containing 'disk.0.os.credentials.username' and extract the user
+        ssh_user = None
+        for line in getinfo_output.splitlines():
+            if "disk.0.os.credentials.username" in line:
+                ssh_user = line.split('=')[1].strip().split(' ')[0].strip("'")
+                break
+        
+        return ssh_user if ssh_user else None
+
+    def apricot_transfer(self, inf_id, vm_id, files, destination, transfer_type):
+        """Handle SCP upload and download."""
+        
+        try:
+            self.create_auth_pipe(inf_id)
+        except ValueError as e:
+            print(e)
+            return "Failed"
+
+        # Generate private key content and host IP
+        private_key_content, hostIP = self.generate_key(inf_id, vm_id)
+        if not private_key_content:
+            print("Error: Unable to generate private key.")
+            return "Failed"
+
+        ssh_user = self.resolve_ssh_user(inf_id)
+        if not ssh_user:
+            print(f"Error: Unable to resolve SSH user for infrastructure {inf_id}.")
+            return "Failed"
+
+        # Construct the SCP command
+        cmd_scp = [
+            'scp',
+            '-i', 'key.pem',
+            '-o', 'StrictHostKeyChecking=no',
+            '-o', 'UserKnownHostsFile=/dev/null',
+        ]
+
+        # Add file paths based on the transfer type
+        if transfer_type == 'upload':
+            # Add local files and remote destination
+            cmd_scp.extend(files)
+            cmd_scp.append(f'{ssh_user}@{hostIP}:{destination}')
+        else:
+            # Add remote files and local destination
+            for file in files:
+                cmd_scp.append(f'{ssh_user}@{hostIP}:{file}')
+            cmd_scp.append(destination)
+
+        # Execute the SCP command using execute_command
+        result = self.execute_command(cmd_scp)
+        if result == "Fail":
+            return "Failed"
+        
+        # Clean up temporary files
+        self.cleanup_files('auth-pipe', 'key.pem')
+
+        return "Done"
+
+    def get_infrastructure_state(self, inf_id):
+        cmd_getstate = ['python3', self.im_client_path, 'getstate', inf_id, '-r', IM_URL, '-a', 'auth-pipe']
+        output = self.execute_command(cmd_getstate)
+
+        if output:
+            # Split the output into lines and look for the relevant state line
+            for line in output.splitlines():
+                if "The infrastructure is in state:" in line:
+                    # Extract and return the last word of the line after the colon
+                    return line.split(':')[-1].strip()
+        return cmd_getstate
+
+    def get_vm_ip(self, inf_id):
+        cmd_getvminfo = ['python3', self.im_client_path, 'getvminfo', inf_id, '0', 'net_interface.1.ip', '-r', IM_URL, '-a', 'auth-pipe']
+        output = self.execute_command(cmd_getvminfo)
+
+        if output:
+            # Split the output into lines and return the last line
+            return output.splitlines()[-1].strip()
+        
+        return cmd_getvminfo
 
     ##################
     #     Magics     #
@@ -176,362 +257,138 @@ class Apricot_Magics(Magics):
 
     @line_magic
     def apricot_log(self, line):
-        if len(line) == 0:
-            print("Usage: apricot_log infrastructure-id\n")
-            return "Fail"
-        
-        # Split the input line to extract the infrastructure ID
+        if not line:
+            return "Usage: apricot_log infrastructure-id"
+
         inf_id = line.split()[0]
 
         try:
-            # Create auth-pipe for the specified infrastructure
             self.create_auth_pipe(inf_id)
+            cmd_getcontmsg = ["python3", self.im_client_path, "getcontmsg", inf_id, "-a", "auth-pipe", "-r", IM_URL]
+            output = self.execute_command(cmd_getcontmsg)
+            print(output)
         except ValueError as e:
-            print(e)
+            print("Status: fail. " + str(e) + "\n")
             return "Failed"
-
-        # Construct the command to retrieve log messages
-        cmd_getcontmsg = [
-            "python3",
-            self.im_client_path,
-            "getcontmsg",
-            inf_id,
-            "-a",
-            "auth-pipe",
-            "-r",
-            "https://im.egi.eu/im",
-        ]
-
-        try:
-            # Run the command, capturing stdout and stderr
-            result = run(cmd_getcontmsg, stdout=PIPE, stderr=PIPE, check=True, text=True)
-            print(result.stdout)
-        except CalledProcessError as e:
-            # Handle errors raised by the command
-            print("Status: fail " + str(e.returncode) + "\n")
-            print(e.stderr + "\n")
-            print(e.stdout)
-            return "Fail"
         finally:
-            # Clean up auth-pipe file
-            if os.path.exists('auth-pipe'):
-                os.remove('auth-pipe')
-
+            self.cleanup_files('auth-pipe')
+    
     @line_magic
     def apricot_ls(self, line):
         infrastructures_list = []
 
-        try:
-            with open(self.inf_list_path) as f:
-                data = json.load(f)
-        except FileNotFoundError:
-            print(f"File not found: {self.inf_list_path}")
-            return
+        data = self.load_json(self.inf_list_path)
 
-        # Iterate through each infrastructure
         for infrastructure in data.get('infrastructures', []):
             infrastructure_info = {
                 'Name': infrastructure.get('name', ''),
                 'InfrastructureID': infrastructure.get('infrastructureID', ''),
-                'IP': "",
-                'State': ""
+                'IP': '',
+                'State': ''
             }
 
             try:
                 self.create_auth_pipe(infrastructure_info['InfrastructureID'])
-            except ValueError as e:
-                print(e)
-                return "Failed"
-
-            cmd_getstate = [
-                'python3',
-                self.im_client_path,
-                'getstate',
-                infrastructure_info['InfrastructureID'],
-                '-r',
-                'https://im.egi.eu/im',
-                '-a',
-                'auth-pipe',
-            ]
-
-            try:
-                # Run the command, capturing stdout
-                result = run(cmd_getstate, stdout=PIPE, stderr=PIPE, check=True, text=True)
-                state_output = result.stdout
-                state_words = state_output.split()
-                state_index = state_words.index("state:") if "state:" in state_words else -1
-
-                if state_index != -1 and state_index < len(state_words) - 1:
-                    state = state_words[state_index + 1].strip()
-                    infrastructure_info['State'] = state
-                else:
-                    infrastructure_info['State'] = "Error: State not found"
-
-            except CalledProcessError as e:
-                infrastructure_info['State'] = f"Error: {e.output.strip()}"
-
-            cmd_getvminfo = [
-                'python3',
-                self.im_client_path,
-                'getvminfo',
-                infrastructure_info['InfrastructureID'],
-                '0',
-                'net_interface.1.ip',
-                '-r',
-                'https://im.egi.eu/im',
-                '-a',
-                'auth-pipe',
-            ]
-
-            try:
-                # Run the command, capturing stdout
-                result = run(cmd_getvminfo, stdout=PIPE, stderr=PIPE, check=True, text=True)
-                ip_output = result.stdout
-                ip = ip_output.split()[-1].strip()
-                infrastructure_info['IP'] = ip
-            except CalledProcessError as e:
-                infrastructure_info['IP'] = f"Error: {e.output.strip()}"
+                infrastructure_info['State'] = self.get_infrastructure_state(infrastructure_info['InfrastructureID'])
+                infrastructure_info['IP'] = self.get_vm_ip(infrastructure_info['InfrastructureID'])
+            finally:
+                self.cleanup_files('auth-file')
 
             infrastructures_list.append(infrastructure_info)
 
-        # Convert infrastructures_list to a list of lists for tabulate
         infrastructure_data = [
-            [infrastructure['Name'], infrastructure['InfrastructureID'], infrastructure['IP'], infrastructure['State']]
-            for infrastructure in infrastructures_list
+            [infra['Name'], infra['InfrastructureID'], infra['IP'], infra['State']] for infra in infrastructures_list
         ]
 
-        # Print the information as a table using tabulate
         print(tabulate(infrastructure_data, headers=['Infrastructure name', 'Infrastructure ID', 'IP Address', 'Status'], tablefmt='grid'))
-
-        # Clean up auth-pipe file
-        if os.path.exists('auth-pipe'):
-            os.remove('auth-pipe')
-
-        return
-
+    
     @line_magic
     def apricot_info(self, line):
-        if len(line) == 0:
-            print("Usage: apricot_info infrastructure-id\n")
-            return "Fail"
+        if not line:
+            return "Usage: apricot_info infrastructure-id"
 
-        # Split the input line to extract the infrastructure ID
         inf_id = line.split()[0]
 
         try:
-            # Create auth-pipe for the specified infrastructure
             self.create_auth_pipe(inf_id)
+            cmd_getinfo = ["python3", self.im_client_path, "getinfo", inf_id, "-a", "auth-pipe", "-r", IM_URL]
+            output = self.execute_command(cmd_getinfo)
+            print(output)
         except ValueError as e:
-            print(e)
+            print("Status: fail. " + str(e) + "\n")
             return "Failed"
-
-        # Construct the command to retrieve log messages
-        cmd_getinfo = [
-            "python3",
-            self.im_client_path,
-            "getinfo",
-            inf_id,
-            "-a",
-            "auth-pipe",
-            "-r",
-            "https://im.egi.eu/im",
-        ]
-
-        try:
-            # Run the command, capturing stdout and stderr
-            result = run(cmd_getinfo, stdout=PIPE, stderr=PIPE, check=True, text=True)
-            print(result.stdout)
-        except CalledProcessError as e:
-            # Handle errors raised by the command
-            print("Status: fail " + str(e.returncode) + "\n")
-            print(e.stderr + "\n")
-            print(e.stdout)
-            return "Fail"
         finally:
-            # Clean up auth-pipe file
-            if os.path.exists('auth-pipe'):
-                os.remove('auth-pipe')
+            self.cleanup_files('auth-file')
 
     @line_magic
     def apricot_vmls(self, line):
-        if len(line) == 0:
+        if not line:
             print("Usage: apricot_vmls infrastructure-id\n")
             return "Fail"
 
-        # Split the input line to extract the infrastructure ID
         inf_id = line.split()[0]
-
         vm_info_list = []
 
         try:
             self.create_auth_pipe(inf_id)
         except ValueError as e:
-            print(e)
+            print("Status: fail. " + str(e) + "\n")
             return "Failed"
 
-        cmd_getinfo = [
-            'python3',
-            self.im_client_path,
-            'getinfo',
-            inf_id,
-            '-r',
-            'https://im.egi.eu/im',
-            '-a',
-            'auth-pipe',
-        ]
+        cmd_getinfo = ['python3', self.im_client_path, 'getinfo', inf_id, '-r', IM_URL, '-a', 'auth-pipe']
+        output = self.execute_command(cmd_getinfo)
+        if not output:
+            return "Fail"
 
-        try:
-            current_vm_id, ip_address, status, provider_type, os_image = None, None, None, None, None
+        current_vm_id, ip_address, status, provider_type, os_image = None, None, None, None, None
+        for line in output.splitlines():
+            if line.startswith("Info about VM with ID:"):
+                current_vm_id = line.split(":")[1].strip()
+            elif "net_interface.1.ip =" in line:
+                ip_address = line.split("'")[1].strip()
+            elif "state =" in line:
+                status = line.split("'")[1].strip()
+            elif "provider.type =" in line:
+                provider_type = line.split("'")[1].strip()
+            elif "disk.0.image.url =" in line:
+                os_image = line.split("'")[1].strip()
 
-            # Execute command and capture output
-            result = run(cmd_getinfo, stdout=PIPE, stderr=PIPE, check=True, text=True)
-            state_output = result.stdout
-            # Split the output by lines
-            state_lines = state_output.split('\n')
+            if all((current_vm_id, ip_address, provider_type, os_image, status)):
+                vm_info_list.append([current_vm_id, ip_address, provider_type, os_image, status])
+                current_vm_id, ip_address, status, provider_type, os_image = None, None, None, None, None
 
-            for line in state_lines:
-                if line.startswith("Info about VM with ID:"):
-                    current_vm_id = line.split(":")[1].strip()
-                if line.strip().startswith("net_interface.1.ip ="):
-                    ip_address = line.split("'")[1].strip()
-                if line.strip().startswith("state ="):
-                    status = line.split("'")[1].strip()
-                if line.strip().startswith("provider.type ="):
-                    provider_type = line.split("'")[1].strip()
-                if line.strip().startswith("disk.0.image.url ="):
-                    os_image = line.split("'")[1].strip()
-
-                if all((current_vm_id, ip_address, provider_type, os_image, status)):
-                    vm_info_list.append([current_vm_id, ip_address, provider_type, os_image, status])
-                    # Reset variables for the next VM
-                    current_vm_id, ip_address, status, provider_type, os_image = None, None, None, None, None
-
-        except CalledProcessError as e:
-            print(f"Error: {e.output.strip()}")
-
-        # Print the information as a table using tabulate
         print(tabulate(vm_info_list, headers=['VM ID', 'IP Address', 'Provider', 'OS Image', 'Status'], tablefmt='grid'))
-        
-        # Clean up auth-pipe file
-        if os.path.exists('auth-pipe'):
-            os.remove('auth-pipe')
-        
+        self.cleanup_files('auth-pipe')
+
         return
 
     @line_magic
     def apricot_upload(self, line):
-        if len(line) == 0:
-            print("Usage: apricot_upload infrastructure-id vm-id file1 file2 ... fileN remote-destination-path\n")
-            return "Fail"
-        
-        words = line.split()
-        if len(words) < 4:
+        if len(line) == 0 or len(line.split()) < 4:
             print("Usage: apricot_upload infrastructure-id vm-id file1 file2 ... fileN remote-destination-path\n")
             return "Fail"
 
+        words = line.split()
         inf_id = words[0]
         vm_id = words[1]
         destination = words[-1]
         files = words[2:-1]
 
-        try:
-            self.create_auth_pipe(inf_id)
-        except ValueError as e:
-            print(e)
-            return "Failed"
+        return self.apricot_transfer(inf_id, vm_id, files, destination, transfer_type='upload')
 
-        # Call generate_key function to extract private key content and host IP
-        private_key_content, hostIP = self.generate_key(inf_id, vm_id)
-
-        if not private_key_content:
-            print("Error: Unable to generate private key.")
-            return "Failed"
-
-        cmd_scp = [
-            'scp',
-            '-i', 'key.pem',
-            '-o', 'StrictHostKeyChecking=no',
-            '-o', 'UserKnownHostsFile=/dev/null',
-        ]
-
-        # Add each file to the scp command
-        for file in files:
-            cmd_scp.append(file)
-        # Add the destination path to the scp command
-        cmd_scp.append(f'cloudadm@{hostIP}:{destination}')
-
-        # Execute scp command and capture output
-        try:
-            result = run(cmd_scp, stdout=PIPE, stderr=PIPE, check=True, text=True)
-            print(result.stdout)
-        except CalledProcessError as e:
-            print(f"Error: {e.stderr}\n")
-
-        # Clean up auth-pipe and key.pem files
-        if os.path.exists('auth-pipe'):
-            os.remove('auth-pipe')
-        if os.path.exists('key.pem'):
-            os.remove('key.pem')
-
-        return "Done"
-           
     @line_magic
     def apricot_download(self, line):
-        if len(line) == 0:
-            print("Usage: apricot_download infrastructure-id vm-id file1 file2 ... fileN local-destination-path\n")
-            return "Fail"
-        
-        words = line.split()
-        if len(words) < 4:
+        if len(line) == 0 or len(line.split()) < 4:
             print("Usage: apricot_download infrastructure-id vm-id file1 file2 ... fileN local-destination-path\n")
             return "Fail"
 
+        words = line.split()
         inf_id = words[0]
         vm_id = words[1]
         destination = words[-1]
         files = words[2:-1]
 
-        try:
-            self.create_auth_pipe(inf_id)
-        except ValueError as e:
-            print(e)
-            return "Failed"
-
-        # Call generate_key function to extract private key content and host IP
-        private_key_content, hostIP = self.generate_key(inf_id, vm_id)
-
-        if not private_key_content:
-            print("Error: Unable to generate private key.")
-            return "Failed"
-
-        cmd_scp = [
-            'scp',
-            '-i', 'key.pem',
-            '-o', 'StrictHostKeyChecking=no',
-            '-o', 'UserKnownHostsFile=/dev/null',
-        ]
-
-        # Add each remote file to the scp command
-        for file in files:
-            cmd_scp.append(f'cloudadm@{hostIP}:{file}')
-
-        # Add the local destination path to the scp command
-        cmd_scp.append(destination)
-
-        # Execute scp command and capture output
-        try:
-            result = run(cmd_scp, stdout=PIPE, stderr=PIPE, check=True, text=True)
-            print(result.stdout)
-        except CalledProcessError as e:
-            print(f"Error: {e.stderr}\n")
-
-        # Clean up auth-pipe and key.pem files
-        if os.path.exists('auth-pipe'):
-            os.remove('auth-pipe')
-        if os.path.exists('key.pem'):
-            os.remove('key.pem')
-
-        return "Done"
+        return self.apricot_transfer(inf_id, vm_id, files, destination, transfer_type='download')
 
     @line_cell_magic
     def apricot(self, code, cell=None):
@@ -553,7 +410,7 @@ class Apricot_Magics(Magics):
         words = [word for word in code.split() if word]
         word1 = words[0]
 
-        if word1 in {"exec", "execAsync"}:
+        if word1 in {"exec"}:
             if len(words) < 4:
                 print(f"Incomplete instruction: '{code}' \n 'exec' format is: 'exec infrastructure-id vm-id cmd-command'")
                 return "Fail"
@@ -567,46 +424,28 @@ class Apricot_Magics(Magics):
                 except ValueError as e:
                     print(e)
                     return "Failed"
-                
-                ssh_user = self.resolve_ssh_user(inf_id)
 
+                ssh_user = self.resolve_ssh_user(inf_id)
                 if not ssh_user:
                     print(f"Error: Unable to resolve SSH user for infrastructure {inf_id}.")
                     return "Failed"
-                
-                # Call generate_key function to extract private key content and host IP
-                private_key_content, host_ip = self.generate_key(inf_id, vm_id)
 
+                private_key_content, host_ip = self.generate_key(inf_id, vm_id)
                 if not private_key_content:
                     print("Error: Unable to generate private key. Missing infrastructure ID or VM ID.")
                     return "Failed"
 
                 cmd_ssh = ['ssh', '-i', 'key.pem', '-o', 'StrictHostKeyChecking=no', f'{ssh_user}@{host_ip}'] + cmd_command
+                result = self.execute_command(cmd_ssh)
 
-                try:
-                    result = run(cmd_ssh, stdout=PIPE, stderr=PIPE, universal_newlines=True)
-                    if result.returncode == 0:
-                        print(result.stdout)
-                        if word1 == "execAsync":
-                            return "Done"
-                    else:
-                        print(f"Status: fail {result.returncode}\n")
-                        print(result.stderr + "\n")
-                        return "Fail"
-                except CalledProcessError as e:
-                    print(f"Error: {e}")
-                    return "Fail"
-                finally:
-                    if os.path.exists('auth-pipe'):
-                        os.remove('auth-pipe')
-                    if os.path.exists('key.pem'):
-                        os.remove('key.pem')
+                if result != "Fail":
+                    print(result)
+                return "Done"
 
         elif word1 == "list":
-            return self.apricot_ls()
+            return self.apricot_ls('')
 
         elif word1 == "destroy":
-            # Check if only one argument is provided (the infrastructure ID)
             if len(words) != 2:
                 print("Usage: destroy infrastructure-id")
                 return "Fail"
@@ -616,7 +455,7 @@ class Apricot_Magics(Magics):
                 try:
                     self.create_auth_pipe(inf_id)
                 except ValueError as e:
-                    print(e)
+                    print("Status: fail. " + str(e) + "\n")
                     return "Failed"
 
                 cmd_destroy = [
@@ -625,38 +464,28 @@ class Apricot_Magics(Magics):
                     'destroy',
                     inf_id,
                     '-r',
-                    'https://im.egi.eu/im',
+                    IM_URL,
                     '-a',
                     'auth-pipe',
                 ]
 
                 try:
                     print("Destroying... Please wait, this may take a few seconds.", end='', flush=True)
-                    result = run(cmd_destroy, stdout=PIPE, stderr=PIPE, universal_newlines=True)
-                    log = result.stdout
-                    std_err = result.stderr
+                    result = self.execute_command(cmd_destroy)
 
                     # Clear the message
                     print("\r" + " " * len("Destroying... Please wait, this may take a few seconds."), end='', flush=True)
                     print("\r", end='', flush=True)
-                    
-                    if log:
-                        print(log)
-                    if std_err:
-                        print(std_err)
 
-                    if result.returncode != 0:
-                        return "Fail"
+                    if result != "Fail":
+                        print(result)
 
                     # Load infrastructure list from JSON file
                     try:
                         with open(self.inf_list_path, 'r') as f:
                             data = json.load(f)
-                    except FileNotFoundError:
-                        print(f"File not found: {self.inf_list_path}")
-                        return "Failed"
-                    except json.JSONDecodeError:
-                        print(f"Error decoding JSON from file: {self.inf_list_path}")
+                    except (FileNotFoundError, json.JSONDecodeError) as e:
+                        print(f"Error loading infrastructure list: {e}")
                         return "Failed"
 
                     # Find and remove the infrastructure with the specified ID
@@ -672,13 +501,12 @@ class Apricot_Magics(Magics):
                     except IOError as e:
                         print(f"Error writing to file {self.inf_list_path}: {e}")
                         return "Failed"
-
+                
                 except CalledProcessError as e:
                     print(f"Error: {e}")
                     return "Failed"
                 finally:
-                    if os.path.exists('auth-pipe'):
-                        os.remove('auth-pipe')
+                    self.cleanup_files('auth-pipe')
 
                 return "Done"
 
