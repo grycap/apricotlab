@@ -394,7 +394,9 @@ async function createChildsForm(
   deployDialog.appendChild(form);
 
   // Show the form for the first child by default
-  if (index !== 0) form.style.display = 'none';
+  if (index !== 0) {
+    form.style.display = 'none';
+  }
 
   // Create input fields from YAML content
   if (inputs) {

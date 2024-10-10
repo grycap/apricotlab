@@ -258,18 +258,18 @@ async function getInfrastructureInfo(
                 echo -e "${authContent}" > $PWD/${pipeAuth} &
 
                 if [ "${dataType}" = "state" ]; then
-                    stateOut=\$(python3 ${imClientPath} getstate ${infrastructureID} -r https://im.egi.eu/im -a \$PWD/${pipeAuth})
+                    stateOut=(python3 ${imClientPath} getstate ${infrastructureID} -r https://im.egi.eu/im -a PWD/${pipeAuth})
                 else
-                    stateOut=\$(python3 ${imClientPath} getvminfo ${infrastructureID} 0 net_interface.1.ip -r https://im.egi.eu/im -a \$PWD/${pipeAuth})
+                    stateOut=(python3 ${imClientPath} getvminfo ${infrastructureID} 0 net_interface.1.ip -r https://im.egi.eu/im -a PWD/${pipeAuth})
                 fi
                 # Remove pipe
                 rm -f $PWD/${pipeAuth} &> /dev/null
                 # Print state output on stderr or stdout
                 if [ $? -ne 0 ]; then
-                    >&2 echo -e \$stateOut
+                    >&2 echo -e stateOut
                     exit 1
                 else
-                    echo -e \$stateOut
+                    echo -e stateOut
                 fi
               `;
 
