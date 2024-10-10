@@ -3,6 +3,7 @@ import {
   JupyterFrontEndPlugin
 } from '@jupyterlab/application';
 import { DOMUtils } from '@jupyterlab/apputils';
+import { Notification } from '@jupyterlab/apputils';
 import { Widget } from '@lumino/widgets';
 import { ButtonExtension } from './buttons';
 
@@ -15,12 +16,14 @@ const plugin: JupyterFrontEndPlugin<void> = {
     'Advanced Platform for Reproducible Infrastructure in the Cloud via Open Tools.',
   autoStart: true,
   activate: (app: JupyterFrontEnd) => {
-    console.log('JupyterLab extension APRICOT is activated!');
+    Notification.success('JupyterLab extension APRICOT is activated!', {
+      autoClose: 5000
+    });
 
     // Create the HTML content of the widget
     const node = document.createElement('div');
     node.className = 'apricot-top-area';
-    node.innerHTML = 'APRICOT';
+    node.textContent = 'APRICOT';
 
     // Create the widget
     const widget = new Widget({ node });

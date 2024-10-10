@@ -14,30 +14,37 @@ export class ButtonExtension
     context: DocumentRegistry.IContext<INotebookModel>
   ): IDisposable {
     // Create the toolbar buttons
-    const DeploymentButton = new ToolbarButton({
+    const deploymentButton = new ToolbarButton({
       label: ' Deployment menu',
       onClick: () => openDeploymentDialog(),
       icon: treeViewIcon // kernelIcon
     });
 
-    const ListDeploymentsButton = new ToolbarButton({
+    const listDeploymentsButton = new ToolbarButton({
       label: ' Deployments list',
       onClick: () => openListDeploymentsDialog(),
       icon: listIcon
     });
 
     // Insert buttons into the toolbar
+    const deploymentButtonIndex = 10;
+    const listDeploymentsButtonIndex = 11;
+
     panel.toolbar.insertItem(
-      10,
+      deploymentButtonIndex,
       'open-list-deployments-dialog',
-      ListDeploymentsButton
+      listDeploymentsButton
     );
-    panel.toolbar.insertItem(11, 'open-deployment-dialog', DeploymentButton);
+    panel.toolbar.insertItem(
+      listDeploymentsButtonIndex,
+      'open-deployment-dialog',
+      deploymentButton
+    );
 
     return {
       dispose: () => {
-        DeploymentButton.dispose();
-        ListDeploymentsButton.dispose();
+        deploymentButton.dispose();
+        listDeploymentsButton.dispose();
       },
       isDisposed: false
     };

@@ -1,7 +1,10 @@
-import { KernelManager } from '@jupyterlab/services';
-import { Dialog } from '@jupyterlab/apputils';
+import { Dialog, Notification } from '@jupyterlab/apputils';
 import { Widget } from '@lumino/widgets';
-import { getInfrastructuresListPath, getIMClientPath } from './utils';
+import {
+  getOrStartKernel,
+  getInfrastructuresListPath,
+  getIMClientPath
+} from './utils';
 
 interface IInfrastructure {
   IMuser: string;
@@ -21,12 +24,18 @@ interface IInfrastructure {
 
 async function openListDeploymentsDialog(): Promise<void> {
   try {
-    const table = createTable();
-    await populateTable(table);
+    // Create a loader container
+    const loaderContainer = document.createElement('div');
+    loaderContainer.classList.add('loader-container');
 
-    // Create a dialog and append the table to it
+    const loader = document.createElement('div');
+    loader.classList.add('loader');
+
+    loaderContainer.appendChild(loader);
+
+    // Create the dialog content
     const dialogContent = document.createElement('div');
-    dialogContent.appendChild(table);
+    dialogContent.appendChild(loaderContainer);
 
     const contentWidget = new Widget({ node: dialogContent });
     const dialog = new Dialog({
@@ -36,8 +45,20 @@ async function openListDeploymentsDialog(): Promise<void> {
     });
 
     dialog.launch();
+
+    const table = createTable();
+    await populateTable(table);
+
+    dialogContent.removeChild(loaderContainer);
+    dialogContent.appendChild(table);
   } catch (error) {
     console.error('Error loading infrastructures list:', error);
+    Notification.error(
+      'Error loading infrastructures list. Check the console for more details.',
+      {
+        autoClose: 5000
+      }
+    );
   }
 }
 
@@ -46,9 +67,9 @@ function createTable(): HTMLTableElement {
   table.classList.add('deployments-table');
 
   // Create the header row
-  const headerRow = table.insertRow();
   const headers = ['Name', 'ID', 'IP', 'State'];
-  headers.forEach(header => {
+  const headerRow = table.insertRow();
+  headers.map(header => {
     const th = document.createElement('th');
     th.textContent = header;
     headerRow.appendChild(th);
@@ -60,21 +81,19 @@ function createTable(): HTMLTableElement {
 async function populateTable(table: HTMLTableElement): Promise<void> {
   let jsonData: string | null = null;
   const infrastructuresListPath = await getInfrastructuresListPath();
-  // Kernel manager to execute the bash command
-  const kernelManager = new KernelManager();
-  const kernel = await kernelManager.startNew();
+
+  const kernel = await getOrStartKernel();
 
   try {
-    // Read the contents of infrastructuresList.json
+    // Read infrastructuresList.json
     const cmdReadJson = `%%bash
                         cat "${infrastructuresListPath}"
                       `;
     const futureReadJson = kernel.requestExecute({ code: cmdReadJson });
 
-    futureReadJson.onIOPub = msg => {
+    futureReadJson.onIOPub = (msg: any) => {
       const content = msg.content as any;
       if (content && content.text) {
-        // Accumulate JSON text from multiple messages if infrastructuresList.json has more than one line
         jsonData = (jsonData || '') + content.text;
       }
     };
@@ -82,10 +101,16 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
     await futureReadJson.done;
 
     if (!jsonData) {
-      throw new Error('No data received from infrastructuresList.json');
+      throw new Error('infrastructuresList.json does not exist in the path.');
     }
   } catch (error) {
     console.error('Error reading or parsing infrastructuresList.json:', error);
+    Notification.error(
+      'Error reading or parsing infrastructuresList.json. Check the console for more details.',
+      {
+        autoClose: 5000
+      }
+    );
     throw new Error('Error creating table');
   }
 
@@ -99,6 +124,12 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
     console.error(
       'Error parsing JSON data from infrastructuresList.json:',
       error
+    );
+    Notification.error(
+      'Error parsing JSON data from infrastructuresList.json. Check the console for more details.',
+      {
+        autoClose: 5000
+      }
     );
     throw new Error('Error parsing JSON data');
   }
@@ -114,81 +145,70 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
       const ipCell = row.insertCell();
       const stateCell = row.insertCell();
 
-      try {
-        const cmdState = await infrastructureState(infrastructure);
-        // Execute kernel to get output
-        const futureState = kernel.requestExecute({ code: cmdState });
+      // Fetch state and IP concurrently using the merged function
+      const [state, ip] = await Promise.all([
+        fetchInfrastructureData(kernel, infrastructure, stateCell, 'state'),
+        fetchInfrastructureData(kernel, infrastructure, ipCell, 'ip')
+      ]);
 
-        // Initialize stateCell text content as 'Loading...'
-        stateCell.textContent = 'Loading...';
-
-        futureState.onIOPub = msg => {
-          console.log('state', msg);
-          const content = msg.content as any; // Cast content to any type
-          const outputState =
-            content.text || (content.data && content.data['text/plain']);
-          // Ensure outputState is not undefined before updating stateCell text content
-          if (outputState !== undefined) {
-            // Extract the state from the output (if present)
-            const stateWords = outputState.trim().split(' ');
-            const stateIndex = stateWords.indexOf('state:');
-            if (stateIndex !== -1 && stateIndex < stateWords.length - 1) {
-              const state = stateWords[stateIndex + 1].trim();
-              stateCell.textContent = state;
-            } else {
-              stateCell.textContent = 'Error';
-            }
-          }
-        };
-
-        await futureState.done; // Wait for state request to complete
-      } catch (error) {
-        console.error(
-          `Error fetching state for infrastructure ${infrastructure.infrastructureID}:`,
-          error
-        );
-        stateCell.textContent = 'Error';
-      }
-
-      try {
-        const cmdIP = await infrastructureIP(infrastructure);
-        // Execute kernel to get output
-        const futureIP = kernel.requestExecute({ code: cmdIP });
-
-        // Initialize ipCell text content as 'Loading...'
-        ipCell.textContent = 'Loading...';
-
-        futureIP.onIOPub = msg => {
-          console.log('ip', msg);
-          const content = msg.content as any; // Cast content to any type
-          const outputIP =
-            content.text || (content.data && content.data['text/plain']);
-          // Ensure outputIP is not undefined before updating ipCell text content
-          if (outputIP !== undefined) {
-            // Extract the IP from the output (get the last word)
-            const ipWords = outputIP.trim().split(' ');
-            const ip = ipWords[ipWords.length - 1];
-            ipCell.textContent = ip ? ip : 'Error';
-          }
-        };
-
-        await futureIP.done; // Wait for IP request to complete
-      } catch (error) {
-        console.error(
-          `Error fetching IP for infrastructure ${infrastructure.infrastructureID}:`,
-          error
-        );
-        ipCell.textContent = 'Error';
-      }
+      // Update state and IP cells
+      stateCell.textContent = state;
+      ipCell.textContent = ip;
     })
   );
-
-  // Shutdown the kernel after all asynchronous tasks are completed
-  await kernel.shutdown();
 }
 
-async function infrastructureState(
-  infrastructure: IInfrastructure
+async function fetchInfrastructureData(
+  kernel: any,
+  infrastructure: IInfrastructure,
+  cell: HTMLTableCellElement,
+  dataType: 'state' | 'ip'
+): Promise<string> {
+  const cmd = await getInfrastructureInfo(infrastructure, dataType);
+
+  return new Promise<string>(resolve => {
+    cell.textContent = 'Loading...';
+    const future = kernel.requestExecute({ code: cmd });
+
+    future.onIOPub = (msg: any) => {
+      const content = msg.content as any;
+      const outputData =
+        content.text || (content.data && content.data['text/plain']);
+
+      // Ensure outputData is not undefined before resolving the promise
+      if (outputData !== undefined) {
+        let result: string;
+
+        if (dataType === 'state') {
+          // Extract the state from the output
+          const stateWords = outputData.trim().split(' ');
+          const stateIndex = stateWords.indexOf('state:');
+          result =
+            stateIndex !== -1 && stateIndex < stateWords.length - 1
+              ? stateWords[stateIndex + 1].trim()
+              : 'Error';
+        } else {
+          // dataType is 'ip'
+          // Extract the IP from the output (get the last word)
+          const ipWords = outputData.trim().split(' ');
+          const ip = ipWords[ipWords.length - 1];
+          result = ip ? ip : 'Error';
+        }
+
+        resolve(result);
+      }
+    };
+
+    future.done.then(() => {
+      // In case the onIOPub doesn't resolve the promise
+      resolve('Error');
+    });
+  });
+}
+
+async function getInfrastructureInfo(
+  infrastructure: IInfrastructure,
+  dataType: 'state' | 'ip'
 ): Promise<string> {
   const {
     IMuser,
@@ -229,93 +249,31 @@ async function infrastructureState(
   }
 
   const cmd = `%%bash
-              PWD=$(pwd)
-              # Remove pipes if they exist
-              rm -f $PWD/${pipeAuth} &> /dev/null
-              # Create pipes
-              mkfifo $PWD/${pipeAuth}
-              # Command to create the infrastructure manager client credentials
-              echo -e "${authContent}" > $PWD/${pipeAuth} &
+                PWD=$(pwd)
+                # Remove pipes if they exist
+                rm -f $PWD/${pipeAuth} &> /dev/null
+                # Create pipes
+                mkfifo $PWD/${pipeAuth}
+                # Command to create the infrastructure manager client credentials
+                echo -e "${authContent}" > $PWD/${pipeAuth} &
 
-              stateOut=$(python3 ${imClientPath} getstate ${infrastructureID} -r https://im.egi.eu/im -a $PWD/${pipeAuth})
-              # Remove pipe
-              rm -f $PWD/${pipeAuth} &> /dev/null
-              # Print state output on stderr or stdout
-              if [ $? -ne 0 ]; then
-                  >&2 echo -e $stateOut
-                  exit 1
-              else
-                  echo -e $stateOut
-              fi
-            `;
+                if [ "${dataType}" = "state" ]; then
+                    stateOut=(python3 ${imClientPath} getstate ${infrastructureID} -r https://im.egi.eu/im -a PWD/${pipeAuth})
+                else
+                    stateOut=(python3 ${imClientPath} getvminfo ${infrastructureID} 0 net_interface.1.ip -r https://im.egi.eu/im -a PWD/${pipeAuth})
+                fi
+                # Remove pipe
+                rm -f $PWD/${pipeAuth} &> /dev/null
+                # Print state output on stderr or stdout
+                if [ $? -ne 0 ]; then
+                    >&2 echo -e stateOut
+                    exit 1
+                else
+                    echo -e stateOut
+                fi
+              `;
 
-  console.log('cmdState', cmd);
-  return cmd;
-}
-
-async function infrastructureIP(
-  infrastructure: IInfrastructure
-): Promise<string> {
-  const {
-    IMuser,
-    IMpass,
-    infrastructureID,
-    id,
-    type,
-    host,
-    user = '',
-    pass = '',
-    tenant = '',
-    auth_version = '',
-    vo = '',
-    EGIToken = ''
-  } = infrastructure;
-
-  const pipeAuth = 'auth-pipe';
-  const imClientPath = await getIMClientPath();
-
-  let authContent = `id=im; type=InfrastructureManager; username=${IMuser}; password=${IMpass};\n`;
-  authContent += `id=${id}; type=${type}; host=${host};`;
-
-  switch (type) {
-    case 'OpenStack':
-      authContent += ` username=${user}; password=${pass}; tenant=${tenant}; ${auth_version ? `auth_version=${auth_version};` : ''}`;
-      break;
-    case 'OpenNebula':
-      authContent += ` username=${user}; password=${pass};`;
-      break;
-    case 'EC2':
-      authContent += ` username=${user}; password=${pass};`;
-      break;
-    case 'EGI':
-      authContent += ` vo=${vo}; token=${EGIToken};`;
-      break;
-    default:
-      authContent += '';
-  }
-
-  const cmd = `%%bash
-              PWD=$(pwd)
-              # Remove pipes if they exist
-              rm -f $PWD/${pipeAuth} &> /dev/null
-              # Create pipes
-              mkfifo $PWD/${pipeAuth}
-              # Command to create the infrastructure manager client credentials
-              echo -e "${authContent}" > $PWD/${pipeAuth} &
-
-              stateOut=$(python3 ${imClientPath} getvminfo ${infrastructureID} 0 net_interface.1.ip -r https://im.egi.eu/im -a $PWD/${pipeAuth})
-              # Remove pipe
-              rm -f $PWD/${pipeAuth} &> /dev/null
-              # Print state output on stderr or stdout
-              if [ $? -ne 0 ]; then
-                  >&2 echo -e $stateOut
-                  exit 1
-              else
-                  echo -e $stateOut
-              fi
-            `;
-
-  console.log('cmdState', cmd);
+  console.log(`Get ${dataType} command: `, cmd);
   return cmd;
 }
 
