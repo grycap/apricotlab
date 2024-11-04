@@ -60,15 +60,19 @@
         "@jupyterlab/notebook": "^4.2.0",
         "@jupyterlab/services": "^7.2.1",
         "base": "^3.0.0",
+        "micromatch": "4.0.8",
         "react": "^18.2.0",
-        "webpack": "^5.0.0"
+        "webpack": "5.94.0",
+        "ws": "8.18.0"
     },
     "devDependencies": {
         "@jupyterlab/builder": "^4.0.0",
         "@types/js-yaml": "^4.0.9",
         "@types/json-schema": "^7.0.11",
+        "@types/micromatch": "^4",
         "@types/react": "^18.0.26",
         "@types/react-addons-linked-state-mixin": "^0.14.22",
+        "@types/ws": "^8",
         "@typescript-eslint/eslint-plugin": "^6.1.0",
         "@typescript-eslint/parser": "^6.1.0",
         "css-loader": "^6.7.1",
