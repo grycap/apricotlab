@@ -68,7 +68,6 @@ class Apricot_Magics(Magics):
             result = run(cmd, stdout=PIPE, stderr=PIPE, check=True, text=True)
             return result.stdout  # Return only stdout
         except CalledProcessError as e:
-            print(f"Command failed: {e.stderr}")
             return "Fail"
 
     def create_auth_pipe(self, infrastructure_id):
@@ -506,7 +505,7 @@ class Apricot_Magics(Magics):
                     print(f"Error: {e}")
                     return "Failed"
                 finally:
-                    self.cleanup_files('auth-pipe')
+                    self.cleanup_files('auth-pipe', 'key.pem')
 
                 return "Done"
 
