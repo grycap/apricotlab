@@ -146,14 +146,23 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
       const stateCell = row.insertCell();
 
       // Fetch state and IP concurrently using the merged function
-      const [state, ip] = await Promise.all([
-        fetchInfrastructureData(kernel, infrastructure, stateCell, 'state'),
-        fetchInfrastructureData(kernel, infrastructure, ipCell, 'ip')
-      ]);
+      try {
+        const [state, ip] = await Promise.all([
+          fetchInfrastructureData(kernel, infrastructure, stateCell, 'state'),
+          fetchInfrastructureData(kernel, infrastructure, ipCell, 'ip')
+        ]);
 
-      // Update state and IP cells
-      stateCell.textContent = state;
-      ipCell.textContent = ip;
+        // Update state and IP cells
+        stateCell.textContent = state;
+        ipCell.textContent = ip;
+      } catch (error) {
+        console.error(
+          `Error fetching data for infrastructure ${infrastructure.name}:`,
+          error
+        );
+        stateCell.textContent = 'Error';
+        ipCell.textContent = 'Error';
+      }
     })
   );
 }
@@ -167,7 +176,7 @@ async function fetchInfrastructureData(
   const cmd = await getInfrastructureInfo(infrastructure, dataType);
 
   return new Promise<string>(resolve => {
-    cell.textContent = 'Loading...';
+    // Execute the command through the kernel
     const future = kernel.requestExecute({ code: cmd });
 
     future.onIOPub = (msg: any) => {
@@ -175,34 +184,33 @@ async function fetchInfrastructureData(
       const outputData =
         content.text || (content.data && content.data['text/plain']);
 
-      // Ensure outputData is not undefined before resolving the promise
-      if (outputData !== undefined) {
+      if (outputData && outputData.trim() !== '') {
+        console.log(`Received output for ${dataType}:`, outputData);
+
         let result: string;
 
-        if (dataType === 'state') {
-          // Extract the state from the output
-          const stateWords = outputData.trim().split(' ');
-          const stateIndex = stateWords.indexOf('state:');
-          result =
-            stateIndex !== -1 && stateIndex < stateWords.length - 1
-              ? stateWords[stateIndex + 1].trim()
-              : 'Error';
+        // Check if the output contains "error" in the message
+        if (outputData.toLowerCase().includes('error')) {
+          result = 'Fail';
         } else {
-          // dataType is 'ip'
-          // Extract the IP from the output (get the last word)
-          const ipWords = outputData.trim().split(' ');
-          const ip = ipWords[ipWords.length - 1];
-          result = ip ? ip : 'Error';
+          // Process output based on dataType if no error is present
+          if (dataType === 'state') {
+            const stateWords = outputData.trim().split(' ');
+            const stateIndex = stateWords.indexOf('state:');
+            result =
+              stateIndex !== -1 && stateIndex < stateWords.length - 1
+                ? stateWords[stateIndex + 1].trim()
+                : 'Error';
+          } else {
+            // Extract IP from output for dataType 'ip'
+            const ipWords = outputData.trim().split(' ');
+            result = ipWords[ipWords.length - 1] || 'Error';
+          }
         }
 
         resolve(result);
       }
     };
-
-    future.done.then(() => {
-      // In case the onIOPub doesn't resolve the promise
-      resolve('Error');
-    });
   });
 }
 
@@ -258,18 +266,18 @@ async function getInfrastructureInfo(
                 echo -e "${authContent}" > $PWD/${pipeAuth} &
 
                 if [ "${dataType}" = "state" ]; then
-                    stateOut=(python3 ${imClientPath} getstate ${infrastructureID} -r https://im.egi.eu/im -a PWD/${pipeAuth})
+                    stateOut=$(python3 ${imClientPath} getstate ${infrastructureID} -r https://im.egi.eu/im -a $PWD/${pipeAuth})
                 else
-                    stateOut=(python3 ${imClientPath} getvminfo ${infrastructureID} 0 net_interface.1.ip -r https://im.egi.eu/im -a PWD/${pipeAuth})
+                    stateOut=$(python3 ${imClientPath} getvminfo ${infrastructureID} 0 net_interface.1.ip -r https://im.egi.eu/im -a $PWD/${pipeAuth})
                 fi
                 # Remove pipe
                 rm -f $PWD/${pipeAuth} &> /dev/null
                 # Print state output on stderr or stdout
                 if [ $? -ne 0 ]; then
-                    >&2 echo -e stateOut
+                    >&2 echo -e $stateOut
                     exit 1
                 else
-                    echo -e stateOut
+                    echo -e $stateOut
                 fi
               `;
 
