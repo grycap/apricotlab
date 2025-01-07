@@ -2,39 +2,29 @@ FROM ubuntu:22.04
 
 USER root
 
-RUN apt-get update && \
-    apt-get install -y \
-        sshpass \
-        curl \
-        python3 \
-        python3-pip \
-        git \
-        jq \
-    && \
-    python3 -m pip install --upgrade pip && \
-    python3 -m pip install \
+RUN apt-get update && apt-get install -y \
+    sshpass \
+    curl \
+    python3 \
+    python3-pip \
+    git \
+    jq \
+    && python3 -m pip install --upgrade pip \
+    && python3 -m pip install --no-cache-dir \
         jupyterlab \
         IM-client \
-        tabulate
+        tabulate \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs \
+    && npm install -g yarn \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install yarn
-RUN curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add - && \
-    echo "deb https://dl.yarnpkg.com/debian/ stable main" | tee /etc/apt/sources.list.d/yarn.list && \
-    apt-get update && \
-    apt-get install -y yarn
-
-RUN yarn add js-yaml
-
-RUN apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-RUN mkdir -p /home/apricotlab && \
-    git clone https://github.com/grycap/apricotlab /home/apricotlab
-
-# Set the working directory (optional, depending on your needs)
+# Set the working directory
 WORKDIR /home/apricotlab/
 
 # Install the Jupyter Notebook extension
+RUN git clone https://github.com/grycap/apricotlab /home/apricotlab
+WORKDIR /home/apricotlab
 RUN pip install -ve .
 
 # Expose port 8888 (default port for Jupyter Lab)
