@@ -56,7 +56,7 @@ To manage and use previous deployed infrastructures within Jupyter notebook envi
     - list: Same as _apricot_ls_
     - destroy: Take a infrastructure identifier as argument an destroys the infrastructure.
 
-Like any Jupyter magics, these must be lodaded at the notebook using _%reload_ext apricot_magic_ or configure jupyter to load these magics in all notebooks.
+Like any Jupyter magics, these must be lodaded at the notebook using _%reload_ext apricot_magics_ or configure jupyter to load these magics in all notebooks.
 
 ## Docker
 
