@@ -7,7 +7,8 @@ import {
   getDeployableTemplatesPath,
   getInfrastructuresListPath,
   getIMClientPath,
-  getDeployedTemplatePath
+  getDeployedTemplatePath,
+  createButton
 } from './utils';
 
 interface IDeployInfo {
@@ -139,6 +140,8 @@ let imageOptions: { uri: string; name: string }[] = [];
 
 let deploying = false; // Flag to prevent multiple deployments at the same time
 
+const imEndpoint = 'https://im.egi.eu/im'
+
 //*****************//
 //* Aux functions *//
 //*****************//
@@ -158,23 +161,6 @@ async function openDeploymentDialog(): Promise<void> {
 
   dialog.launch();
 }
-
-const createButton = (
-  label: string,
-  onClick: () => void
-): HTMLButtonElement => {
-  const button = document.createElement('button');
-  button.textContent = label;
-  button.className = 'jp-Button';
-
-  // Add footer-button class for specific buttons
-  if (['Back', 'Next', 'Deploy'].includes(label)) {
-    button.classList.add('footer-button');
-  }
-
-  button.addEventListener('click', onClick);
-  return button;
-};
 
 const addFormInput = (
   form: HTMLFormElement,
@@ -477,7 +463,7 @@ async function selectImage(obj: IDeployInfo): Promise<string> {
 
   cmd += `echo -e "${authContent}" > $PWD/${pipeAuth} &
             # Create final command where the output is stored in "imageOut"
-            imageOut=$(python3 ${imClientPath} -a $PWD/${pipeAuth} -r https://im.egi.eu/im cloudimages ${obj.id})
+            imageOut=$(python3 ${imClientPath} -a $PWD/${pipeAuth} -r ${imEndpoint} cloudimages ${obj.id})
             # Remove pipe
             rm -f $PWD/${pipeAuth} &> /dev/null
             # Print IM output on stderr or stdout
@@ -548,7 +534,7 @@ async function deployIMCommand(
 
   cmd += `echo -e "${authContent}" > $PWD/${pipeAuth} &
             # Create final command where the output is stored in "imageOut"
-            imageOut=$(python3 ${imClientPath} -a $PWD/${pipeAuth} create ${deployedTemplatePath} -r https://im.egi.eu/im)
+            imageOut=$(python3 ${imClientPath} -a $PWD/${pipeAuth} create ${deployedTemplatePath} -r ${imEndpoint})
             # Remove pipe
             rm -f $PWD/${pipeAuth} &> /dev/null
             # Print IM output on stderr or stdout
