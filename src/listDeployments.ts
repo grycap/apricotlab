@@ -3,7 +3,8 @@ import { Widget } from '@lumino/widgets';
 import {
   getOrStartKernel,
   getInfrastructuresListPath,
-  getIMClientPath
+  getIMClientPath,
+  createButton
 } from './utils';
 
 interface IInfrastructure {
@@ -11,7 +12,7 @@ interface IInfrastructure {
   IMpass: string;
   name: string;
   infrastructureID: string;
-  id: string;
+  hostId: string;
   type: string;
   host: string;
   tenant: string;
@@ -21,6 +22,8 @@ interface IInfrastructure {
   vo?: string;
   EGIToken?: string;
 }
+
+const imEndpoint = 'https://im.egi.eu/im'
 
 async function openListDeploymentsDialog(): Promise<void> {
   try {
@@ -67,7 +70,7 @@ function createTable(): HTMLTableElement {
   table.classList.add('deployments-table');
 
   // Create the header row
-  const headers = ['Name', 'ID', 'IP', 'State'];
+  const headers = ['Name', 'ID', 'IP', 'State', 'Action'];
   const headerRow = table.insertRow();
   headers.map(header => {
     const th = document.createElement('th');
@@ -87,8 +90,7 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
   try {
     // Read infrastructuresList.json
     const cmdReadJson = `%%bash
-                        cat "${infrastructuresListPath}"
-                      `;
+                        cat "${infrastructuresListPath}"`;
     const futureReadJson = kernel.requestExecute({ code: cmdReadJson });
 
     futureReadJson.onIOPub = (msg: any) => {
@@ -111,7 +113,6 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
         autoClose: 5000
       }
     );
-    throw new Error('Error creating table');
   }
 
   // Parse the JSON data
@@ -144,6 +145,7 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
       idCell.textContent = infrastructure.infrastructureID;
       const ipCell = row.insertCell();
       const stateCell = row.insertCell();
+      const actionCell = row.insertCell();
 
       // Fetch state and IP concurrently using the merged function
       try {
@@ -163,6 +165,58 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
         stateCell.textContent = 'Error';
         ipCell.textContent = 'Error';
       }
+
+      // Create a Delete button inside the action column
+      const deleteButton = createButton('Delete', async () => {
+        const infrastructureId = infrastructure.infrastructureID;
+        // const infrastructureName = infrastructure.name;
+
+        const kernel = await getOrStartKernel();
+
+        // Load the magics extension in the kernel
+        const loadExtensionCmd = `%reload_ext apricot_magics`;
+        await kernel.requestExecute({ code: loadExtensionCmd }).done;
+
+        // Create a loader element
+        const loader = document.createElement('div');
+        loader.className = 'mini-loader';
+        deleteButton.textContent = '';
+        deleteButton.appendChild(loader); 
+
+        try {
+          const cmdDestroyInfra = `%apricot destroy ${infrastructureId}`;
+          const futureDestroyInfra = kernel.requestExecute({ code: cmdDestroyInfra });
+
+          futureDestroyInfra.onIOPub = (msg: any) => {
+            const content = msg.content as any;
+
+            const outputData = content.text || (content.data && content.data['text/plain']);
+
+            if (outputData && outputData.includes(`Infrastructure successfully destroyed`)) {
+              row.remove();
+              Notification.success(`Infrastructure ${infrastructureId} successfully destroyed.`, {
+                autoClose: 5000
+              });
+            }
+          };
+
+          await futureDestroyInfra.done;
+
+        } catch (error) {
+          console.error('Error destroying infrastructure:', error);
+          // Remove the loader and restore the button text
+          deleteButton.removeChild(loader);
+          deleteButton.textContent = 'Delete';
+          Notification.error(
+            'Error destroying infrastructure. Check the console for more details.',
+            {
+              autoClose: 5000
+            }
+          );
+        }
+      });
+
+      actionCell.appendChild(deleteButton);
     })
   );
 }
@@ -222,7 +276,7 @@ async function getInfrastructureInfo(
     IMuser,
     IMpass,
     infrastructureID,
-    id,
+    hostId,
     type,
     host,
     user = '',
@@ -237,7 +291,7 @@ async function getInfrastructureInfo(
   const imClientPath = await getIMClientPath();
 
   let authContent = `id=im; type=InfrastructureManager; username=${IMuser}; password=${IMpass};\n`;
-  authContent += `id=${id}; type=${type}; host=${host};`;
+  authContent += `id=${hostId}; type=${type}; host=${host};`;
 
   switch (type) {
     case 'OpenStack':
@@ -266,9 +320,9 @@ async function getInfrastructureInfo(
                 echo -e "${authContent}" > $PWD/${pipeAuth} &
 
                 if [ "${dataType}" = "state" ]; then
-                    stateOut=$(python3 ${imClientPath} getstate ${infrastructureID} -r https://im.egi.eu/im -a $PWD/${pipeAuth})
+                    stateOut=$(python3 ${imClientPath} getstate ${infrastructureID} -r ${imEndpoint} -a $PWD/${pipeAuth})
                 else
-                    stateOut=$(python3 ${imClientPath} getvminfo ${infrastructureID} 0 net_interface.1.ip -r https://im.egi.eu/im -a $PWD/${pipeAuth})
+                    stateOut=$(python3 ${imClientPath} getvminfo ${infrastructureID} 0 net_interface.1.ip -r ${imEndpoint} -a $PWD/${pipeAuth})
                 fi
                 # Remove pipe
                 rm -f $PWD/${pipeAuth} &> /dev/null
