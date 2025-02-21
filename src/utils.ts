@@ -96,3 +96,24 @@ export async function getDeployableTemplatesPath(): Promise<string> {
     'Failed to find deployable_templates/ directory. Maybe it is not in the project folder. Check the console for more details.'
   );
 }
+
+export const createButton = (
+  label: string,
+  onClick: () => void
+): HTMLButtonElement => {
+  const button = document.createElement('button');
+  button.textContent = label;
+  button.className = 'jp-Button';
+
+  // Add footer-button class for specific buttons
+  if (['Back', 'Next', 'Deploy'].includes(label)) {
+    button.classList.add('footer-button');
+  }
+
+  if (label === 'Delete') {
+    button.classList.add('jp-mod-styled', 'jp-mod-warn');
+  }
+
+  button.addEventListener('click', onClick);
+  return button;
+};

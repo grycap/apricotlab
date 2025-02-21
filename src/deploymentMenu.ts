@@ -7,7 +7,8 @@ import {
   getDeployableTemplatesPath,
   getInfrastructuresListPath,
   getIMClientPath,
-  getDeployedTemplatePath
+  getDeployedTemplatePath,
+  createButton
 } from './utils';
 
 interface IDeployInfo {
@@ -139,6 +140,8 @@ let imageOptions: { uri: string; name: string }[] = [];
 
 let deploying = false; // Flag to prevent multiple deployments at the same time
 
+const imEndpoint = 'https://im.egi.eu/im';
+
 //*****************//
 //* Aux functions *//
 //*****************//
@@ -158,23 +161,6 @@ async function openDeploymentDialog(): Promise<void> {
 
   dialog.launch();
 }
-
-const createButton = (
-  label: string,
-  onClick: () => void
-): HTMLButtonElement => {
-  const button = document.createElement('button');
-  button.textContent = label;
-  button.className = 'jp-Button';
-
-  // Add footer-button class for specific buttons
-  if (['Back', 'Next', 'Deploy'].includes(label)) {
-    button.classList.add('footer-button');
-  }
-
-  button.addEventListener('click', onClick);
-  return button;
-};
 
 const addFormInput = (
   form: HTMLFormElement,
@@ -477,7 +463,7 @@ async function selectImage(obj: IDeployInfo): Promise<string> {
 
   cmd += `echo -e "${authContent}" > $PWD/${pipeAuth} &
             # Create final command where the output is stored in "imageOut"
-            imageOut=$(python3 ${imClientPath} -a $PWD/${pipeAuth} -r https://im.egi.eu/im cloudimages ${obj.id})
+            imageOut=$(python3 ${imClientPath} -a $PWD/${pipeAuth} -r ${imEndpoint} cloudimages ${obj.id})
             # Remove pipe
             rm -f $PWD/${pipeAuth} &> /dev/null
             # Print IM output on stderr or stdout
@@ -495,9 +481,12 @@ async function selectImage(obj: IDeployInfo): Promise<string> {
 
 const getEGIToken = async () => {
   const code = `%%bash
-                TOKEN=$(cat /var/run/secrets/egi.eu/access_token)
-                echo $TOKEN
-             `;
+                if [ -f /var/run/secrets/egi.eu/access_token ]; then
+                  cat /var/run/secrets/egi.eu/access_token
+                else
+                  echo ""
+                fi
+              `;
   const kernelManager = new KernelManager();
   const kernel = await kernelManager.startNew();
   const future = kernel.requestExecute({ code });
@@ -548,7 +537,7 @@ async function deployIMCommand(
 
   cmd += `echo -e "${authContent}" > $PWD/${pipeAuth} &
             # Create final command where the output is stored in "imageOut"
-            imageOut=$(python3 ${imClientPath} -a $PWD/${pipeAuth} create ${deployedTemplatePath} -r https://im.egi.eu/im)
+            imageOut=$(python3 ${imClientPath} -a $PWD/${pipeAuth} create ${deployedTemplatePath} -r ${imEndpoint})
             # Remove pipe
             rm -f $PWD/${pipeAuth} &> /dev/null
             # Print IM output on stderr or stdout
@@ -792,9 +781,23 @@ const deployProviderCredentials = async (
       break;
 
     case 'EGI':
+      await getEGIToken().then(token => {
+        console.log('EGI Token:', token);
+        const tokenStr = String(token);
+        deployInfo.EGIToken = tokenStr;
+        const tokenInput = document.getElementById(
+          'egiToken'
+        ) as HTMLInputElement;
+        if (tokenInput) {
+          console.log('EGI Token tokenStr:', tokenStr);
+          tokenInput.value = tokenStr;
+        }
+      });
+
       text = '<p>Introduce EGI credentials.</p><br>';
       addFormInput(form, 'VO:', 'vo', deployInfo.vo);
       addFormInput(form, 'Site name:', 'site', deployInfo.host);
+      addFormInput(form, 'Access token:', 'egiToken', deployInfo.EGIToken);
       break;
   }
 
@@ -812,6 +815,7 @@ const deployProviderCredentials = async (
     deployInfo.authVersion = '';
     deployInfo.domain = '';
     deployInfo.vo = '';
+    deployInfo.EGIToken = '';
   });
   const nextButton = createButton('Next', async () => {
     const form = dialogBody.querySelector('form'); // Get the form element
@@ -860,8 +864,7 @@ const deployProviderCredentials = async (
       case 'EGI':
         deployInfo.host = getInputValue('site');
         deployInfo.vo = getInputValue('vo');
-        deployInfo.EGIToken = await getEGIToken();
-        console.log('EGI Token:', deployInfo.EGIToken);
+        deployInfo.EGIToken = getInputValue('egiToken');
         break;
     }
 

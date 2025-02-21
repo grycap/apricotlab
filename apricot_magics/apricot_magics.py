@@ -6,7 +6,7 @@ from pathlib import Path
 import os
 import json
 
-IM_URL = 'https://im.egi.eu/im'
+IM_ENDPOINT = 'https://im.egi.eu/im'
 
 @magics_class
 class Apricot_Magics(Magics):
@@ -68,6 +68,7 @@ class Apricot_Magics(Magics):
             result = run(cmd, stdout=PIPE, stderr=PIPE, check=True, text=True)
             return result.stdout  # Return only stdout
         except CalledProcessError as e:
+            # print(e)
             return "Fail"
 
     def create_auth_pipe(self, infrastructure_id):
@@ -104,7 +105,7 @@ class Apricot_Magics(Magics):
     def generate_key(self, infrastructure_id, vm_id):
         """ Generates private key and host IP from infrastructure and VM info. """
         cmd_getvminfo = [
-            'python3', self.im_client_path, 'getvminfo', infrastructure_id, vm_id, '-r', IM_URL, '-a', 'auth-pipe'
+            'python3', self.im_client_path, 'getvminfo', infrastructure_id, vm_id, '-r', IM_ENDPOINT, '-a', 'auth-pipe'
         ]
 
         try:
@@ -124,6 +125,7 @@ class Apricot_Magics(Magics):
 
             return private_key_content, host_ip
         except CalledProcessError as e:
+            print(e)
             return None, None
 
     def extract_key(self, output):
@@ -158,7 +160,7 @@ class Apricot_Magics(Magics):
             'getinfo',
             inf_id,
             '-r',
-            IM_URL,
+            IM_ENDPOINT,
             '-a',
             'auth-pipe',
         ]
@@ -229,7 +231,7 @@ class Apricot_Magics(Magics):
         return "Done"
 
     def get_infrastructure_state(self, inf_id):
-        cmd_getstate = ['python3', self.im_client_path, 'getstate', inf_id, '-r', IM_URL, '-a', 'auth-pipe']
+        cmd_getstate = ['python3', self.im_client_path, 'getstate', inf_id, '-r', IM_ENDPOINT, '-a', 'auth-pipe']
         output = self.execute_command(cmd_getstate)
 
         if output:
@@ -241,7 +243,7 @@ class Apricot_Magics(Magics):
         return cmd_getstate
 
     def get_vm_ip(self, inf_id):
-        cmd_getvminfo = ['python3', self.im_client_path, 'getvminfo', inf_id, '0', 'net_interface.1.ip', '-r', IM_URL, '-a', 'auth-pipe']
+        cmd_getvminfo = ['python3', self.im_client_path, 'getvminfo', inf_id, '0', 'net_interface.1.ip', '-r', IM_ENDPOINT, '-a', 'auth-pipe']
         output = self.execute_command(cmd_getvminfo)
 
         if output:
@@ -249,6 +251,29 @@ class Apricot_Magics(Magics):
             return output.splitlines()[-1].strip()
         
         return cmd_getvminfo
+
+    def remove_infrastructure_from_list(self, inf_id):
+        # Load infrastructure list from JSON file
+        try:
+            with open(self.inf_list_path, 'r') as f:
+                data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            print(f"Error loading infrastructure list: {e}")
+            return "Failed"
+
+        # Find and remove the infrastructure with the specified ID
+        for infrastructure in data['infrastructures']:
+            if infrastructure['infrastructureID'] == inf_id:
+                data['infrastructures'].remove(infrastructure)
+                break
+
+        # Write the updated infrastructure list back to the JSON file
+        try:
+            with open(self.inf_list_path, 'w') as f:
+                json.dump(data, f, indent=4)
+        except IOError as e:
+            print(f"Error writing to file {self.inf_list_path}: {e}")
+            return "Failed"
 
     ##################
     #     Magics     #
@@ -263,7 +288,7 @@ class Apricot_Magics(Magics):
 
         try:
             self.create_auth_pipe(inf_id)
-            cmd_getcontmsg = ["python3", self.im_client_path, "getcontmsg", inf_id, "-a", "auth-pipe", "-r", IM_URL]
+            cmd_getcontmsg = ["python3", self.im_client_path, "getcontmsg", inf_id, "-a", "auth-pipe", "-r", IM_ENDPOINT]
             output = self.execute_command(cmd_getcontmsg)
             print(output)
         except ValueError as e:
@@ -310,7 +335,7 @@ class Apricot_Magics(Magics):
 
         try:
             self.create_auth_pipe(inf_id)
-            cmd_getinfo = ["python3", self.im_client_path, "getinfo", inf_id, "-a", "auth-pipe", "-r", IM_URL]
+            cmd_getinfo = ["python3", self.im_client_path, "getinfo", inf_id, "-a", "auth-pipe", "-r", IM_ENDPOINT]
             output = self.execute_command(cmd_getinfo)
             print(output)
         except ValueError as e:
@@ -334,7 +359,7 @@ class Apricot_Magics(Magics):
             print("Status: fail. " + str(e) + "\n")
             return "Failed"
 
-        cmd_getinfo = ['python3', self.im_client_path, 'getinfo', inf_id, '-r', IM_URL, '-a', 'auth-pipe']
+        cmd_getinfo = ['python3', self.im_client_path, 'getinfo', inf_id, '-r', IM_ENDPOINT, '-a', 'auth-pipe']
         output = self.execute_command(cmd_getinfo)
         if not output:
             return "Fail"
@@ -388,6 +413,85 @@ class Apricot_Magics(Magics):
         files = words[2:-1]
 
         return self.apricot_transfer(inf_id, vm_id, files, destination, transfer_type='download')
+
+    @line_magic
+    def apricot_destroy(self, inf_id):
+        cmd_destroy = [
+            'python3',
+            self.im_client_path,
+            'destroy',
+            inf_id,
+            '-r',
+            IM_ENDPOINT,
+            '-a',
+            'auth-pipe',
+        ]
+
+        try:
+            print("Destroying... Please wait, this may take a few seconds.", end='', flush=True)
+            result = self.execute_command(cmd_destroy)
+
+            # Clear the message
+            print("\r" + " " * len("Destroying... Please wait, this may take a few seconds."), end='', flush=True)
+            print("\r", end='', flush=True)
+
+            if result != "Fail":
+                print(result)
+
+            if "Infrastructure successfully destroyed" in result:
+                self.remove_infrastructure_from_list(inf_id)
+        
+        except CalledProcessError as e:
+            print(f"Error: {e}")
+            return "Failed"
+        finally:
+            self.cleanup_files('auth-pipe', 'key.pem')
+
+    # @line_magic
+    # async def apricot_destroy2(self, inf_id):
+    #     cmd_destroy = [
+    #         'python3',
+    #         self.im_client_path,
+    #         'destroy',
+    #         inf_id,
+    #         '-r',
+    #         IM_ENDPOINT,
+    #         '-a',
+    #         'auth-pipe',
+    #     ]
+
+    #     try:
+    #         print("Destroying... Please wait, this may take a few seconds.", end='', flush=True)
+    #         # result = self.execute_command(cmd_destroy)
+    #         # Run asynchronously in the background
+    #         result = subprocess.Popen(cmd_destroy, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    #         stdout, stderr = result.communicate()
+
+    #         process = await asyncio.create_subprocess_exec(
+    #             *cmd_destroy,
+    #             stdout=asyncio.subprocess.PIPE,
+    #             stderr=asyncio.subprocess.PIPE
+    #         )
+
+    #         stdout, stderr = await process.communicate()
+
+    #         # Clear the message
+    #         print("\r" + " " * len("Destroying... Please wait, this may take a few seconds."), end='', flush=True)
+    #         print("\r", end='', flush=True)
+
+    #         # if result != "Fail":
+    #         #     print(stdout)
+
+    #         if "Infrastructure successfully destroyed" in result:
+    #             self.remove_infrastructure_from_list(self, inf_id)
+    
+    #     except CalledProcessError as e:
+    #         print(f"Error: {e}")
+    #         return "Failed"
+    #     finally:
+    #         self.cleanup_files('auth-pipe', 'key.pem')
+
+    #     return "Done"
 
     @line_cell_magic
     def apricot(self, code, cell=None):
@@ -457,55 +561,7 @@ class Apricot_Magics(Magics):
                     print("Status: fail. " + str(e) + "\n")
                     return "Failed"
 
-                cmd_destroy = [
-                    'python3',
-                    self.im_client_path,
-                    'destroy',
-                    inf_id,
-                    '-r',
-                    IM_URL,
-                    '-a',
-                    'auth-pipe',
-                ]
-
-                try:
-                    print("Destroying... Please wait, this may take a few seconds.", end='', flush=True)
-                    result = self.execute_command(cmd_destroy)
-
-                    # Clear the message
-                    print("\r" + " " * len("Destroying... Please wait, this may take a few seconds."), end='', flush=True)
-                    print("\r", end='', flush=True)
-
-                    if result != "Fail":
-                        print(result)
-
-                    # Load infrastructure list from JSON file
-                    try:
-                        with open(self.inf_list_path, 'r') as f:
-                            data = json.load(f)
-                    except (FileNotFoundError, json.JSONDecodeError) as e:
-                        print(f"Error loading infrastructure list: {e}")
-                        return "Failed"
-
-                    # Find and remove the infrastructure with the specified ID
-                    for infrastructure in data['infrastructures']:
-                        if infrastructure['infrastructureID'] == inf_id:
-                            data['infrastructures'].remove(infrastructure)
-                            break
-
-                    # Write the updated infrastructure list back to the JSON file
-                    try:
-                        with open(self.inf_list_path, 'w') as f:
-                            json.dump(data, f, indent=4)
-                    except IOError as e:
-                        print(f"Error writing to file {self.inf_list_path}: {e}")
-                        return "Failed"
-                
-                except CalledProcessError as e:
-                    print(f"Error: {e}")
-                    return "Failed"
-                finally:
-                    self.cleanup_files('auth-pipe', 'key.pem')
+                self.apricot_destroy(inf_id)
 
                 return "Done"
 
