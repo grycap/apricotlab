@@ -140,7 +140,7 @@ let imageOptions: { uri: string; name: string }[] = [];
 
 let deploying = false; // Flag to prevent multiple deployments at the same time
 
-const imEndpoint = 'https://im.egi.eu/im'
+const imEndpoint = 'https://im.egi.eu/im';
 
 //*****************//
 //* Aux functions *//
@@ -785,7 +785,9 @@ const deployProviderCredentials = async (
         console.log('EGI Token:', token);
         const tokenStr = String(token);
         deployInfo.EGIToken = tokenStr;
-        const tokenInput = document.getElementById('egiToken') as HTMLInputElement;
+        const tokenInput = document.getElementById(
+          'egiToken'
+        ) as HTMLInputElement;
         if (tokenInput) {
           console.log('EGI Token tokenStr:', tokenStr);
           tokenInput.value = tokenStr;

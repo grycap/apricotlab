@@ -23,7 +23,7 @@ interface IInfrastructure {
   EGIToken?: string;
 }
 
-const imEndpoint = 'https://im.egi.eu/im'
+const imEndpoint = 'https://im.egi.eu/im';
 
 async function openListDeploymentsDialog(): Promise<void> {
   try {
@@ -174,34 +174,42 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
         const kernel = await getOrStartKernel();
 
         // Load the magics extension in the kernel
-        const loadExtensionCmd = `%reload_ext apricot_magics`;
+        const loadExtensionCmd = '%reload_ext apricot_magics';
         await kernel.requestExecute({ code: loadExtensionCmd }).done;
 
         // Create a loader element
         const loader = document.createElement('div');
         loader.className = 'mini-loader';
         deleteButton.textContent = '';
-        deleteButton.appendChild(loader); 
+        deleteButton.appendChild(loader);
 
         try {
           const cmdDestroyInfra = `%apricot destroy ${infrastructureId}`;
-          const futureDestroyInfra = kernel.requestExecute({ code: cmdDestroyInfra });
+          const futureDestroyInfra = kernel.requestExecute({
+            code: cmdDestroyInfra
+          });
 
           futureDestroyInfra.onIOPub = (msg: any) => {
             const content = msg.content as any;
 
-            const outputData = content.text || (content.data && content.data['text/plain']);
+            const outputData =
+              content.text || (content.data && content.data['text/plain']);
 
-            if (outputData && outputData.includes(`Infrastructure successfully destroyed`)) {
+            if (
+              outputData &&
+              outputData.includes('Infrastructure successfully destroyed')
+            ) {
               row.remove();
-              Notification.success(`Infrastructure ${infrastructureId} successfully destroyed.`, {
-                autoClose: 5000
-              });
+              Notification.success(
+                `Infrastructure ${infrastructureId} successfully destroyed.`,
+                {
+                  autoClose: 5000
+                }
+              );
             }
           };
 
           await futureDestroyInfra.done;
-
         } catch (error) {
           console.error('Error destroying infrastructure:', error);
           // Remove the loader and restore the button text

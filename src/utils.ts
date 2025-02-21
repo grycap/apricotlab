@@ -116,4 +116,4 @@ export const createButton = (
 
   button.addEventListener('click', onClick);
   return button;
-}
+};
