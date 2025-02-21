@@ -481,9 +481,12 @@ async function selectImage(obj: IDeployInfo): Promise<string> {
 
 const getEGIToken = async () => {
   const code = `%%bash
-                TOKEN=$(cat /var/run/secrets/egi.eu/access_token)
-                echo $TOKEN
-             `;
+                if [ -f /var/run/secrets/egi.eu/access_token ]; then
+                  cat /var/run/secrets/egi.eu/access_token
+                else
+                  echo ""
+                fi
+              `;
   const kernelManager = new KernelManager();
   const kernel = await kernelManager.startNew();
   const future = kernel.requestExecute({ code });
@@ -778,9 +781,21 @@ const deployProviderCredentials = async (
       break;
 
     case 'EGI':
+      await getEGIToken().then(token => {
+        console.log('EGI Token:', token);
+        const tokenStr = String(token);
+        deployInfo.EGIToken = tokenStr;
+        const tokenInput = document.getElementById('egiToken') as HTMLInputElement;
+        if (tokenInput) {
+          console.log('EGI Token tokenStr:', tokenStr);
+          tokenInput.value = tokenStr;
+        }
+      });
+
       text = '<p>Introduce EGI credentials.</p><br>';
       addFormInput(form, 'VO:', 'vo', deployInfo.vo);
       addFormInput(form, 'Site name:', 'site', deployInfo.host);
+      addFormInput(form, 'Access token:', 'egiToken', deployInfo.EGIToken);
       break;
   }
 
@@ -798,6 +813,7 @@ const deployProviderCredentials = async (
     deployInfo.authVersion = '';
     deployInfo.domain = '';
     deployInfo.vo = '';
+    deployInfo.EGIToken = '';
   });
   const nextButton = createButton('Next', async () => {
     const form = dialogBody.querySelector('form'); // Get the form element
@@ -846,8 +862,7 @@ const deployProviderCredentials = async (
       case 'EGI':
         deployInfo.host = getInputValue('site');
         deployInfo.vo = getInputValue('vo');
-        deployInfo.EGIToken = await getEGIToken();
-        console.log('EGI Token:', deployInfo.EGIToken);
+        deployInfo.EGIToken = getInputValue('egiToken');
         break;
     }
 
