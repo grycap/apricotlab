@@ -23,7 +23,7 @@ interface IInfrastructure {
   EGIToken?: string;
 }
 
-const imEndpoint = 'https://im.egi.eu/im';
+const imEndpoint = 'https://deploy.sandbox.eosc-beyond.eu';
 
 async function openListDeploymentsDialog(): Promise<void> {
   try {
@@ -253,7 +253,7 @@ async function fetchInfrastructureData(
 
         // Check if the output contains "error" in the message
         if (outputData.toLowerCase().includes('error')) {
-          result = 'Fail';
+          result = 'Pending';
         } else {
           // Process output based on dataType if no error is present
           if (dataType === 'state') {

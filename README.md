@@ -38,25 +38,25 @@ To manage and use previous deployed infrastructures within Jupyter notebook envi
 - Magic lines:
   - **apricot_log**:
     - Arguments: infrastructure identifier
-    - Returns: The configuration logs of specified infrastructure
-  - **apricot_ls**: Takes no arguments and returns a list with all the deployed infrastructures using this extension.
+    - Returns: the configuration logs of specified infrastructure
+  - **apricot_ls**: takes no arguments and returns a list with all the deployed infrastructures using this extension.
   - **apricot_info**:
     - Arguments: infrastructure identifier
-    - Returns: The specifications of specified infrastructure
+    - Returns: the specifications of specified infrastructure
   - **apricot_vmls**:
     - Arguments: infrastructure identifier.
-    - Return: A list of working nodes and their status at the specified infrastructure.
-  - **apricot_upload**: Upload specified local files into the specified infrastructure destination path.
-    - Arguments: infrastructure identifier, upload files paths, destination path.
-  - **apricot_download**: Download files located at specified infrastructure to local storage.
-    - Arguments: infrastructure identifier, download files paths, local destination path.
+    - Return: a list of working nodes and their status at the specified infrastructure.
+  - **apricot_upload**: upload specified local files into the specified infrastructure destination path.
+    - Arguments: infrastructure identifier, upload file paths, destination path.
+  - **apricot_download**: download files located at specified infrastructure to local storage.
+    - Arguments: infrastructure identifier, download file paths, local destination path.
 - Magic line and cell:
   - **apricot**: Perform multiple tasks depending on input command.
-    - exec: Takes as arguments a infrastructure identifier and an OS command to be executed in the specified infrastructure. This call is synchronous.
-    - list: Same as _apricot_ls_
-    - destroy: Take a infrastructure identifier as argument an destroys the infrastructure.
+    - exec: takes as arguments a infrastructure identifier and an OS command to be executed in the specified infrastructure.
+    - list: same as _apricot_ls_.
+    - destroy: take a infrastructure identifier as argument and destroys the infrastructure.
 
-Like any Jupyter magics, these must be lodaded at the notebook using _%reload_ext apricot_magics_ or configure jupyter to load these magics in all notebooks.
+Like any Jupyter magics, these must be lodaded at the notebook using _%reload_ext apricot_magics_ or configure Jupyter to load these magics in all notebooks.
 
 ## Docker
 

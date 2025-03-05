@@ -140,7 +140,7 @@ let imageOptions: { uri: string; name: string }[] = [];
 
 let deploying = false; // Flag to prevent multiple deployments at the same time
 
-const imEndpoint = 'https://im.egi.eu/im';
+const imEndpoint = 'https://deploy.sandbox.eosc-beyond.eu';
 
 //*****************//
 //* Aux functions *//

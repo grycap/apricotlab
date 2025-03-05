@@ -2,11 +2,12 @@ from tabulate import tabulate
 from IPython.core.magic import Magics, line_magic, line_cell_magic, magics_class
 from subprocess import run, PIPE, CalledProcessError
 from pathlib import Path
+from imclient import IMClient
 
 import os
 import json
 
-IM_ENDPOINT = 'https://im.egi.eu/im'
+IM_ENDPOINT = 'https://deploy.sandbox.eosc-beyond.eu'
 
 @magics_class
 class Apricot_Magics(Magics):
@@ -66,10 +67,12 @@ class Apricot_Magics(Magics):
         """Execute a command and return stdout, or handle the output differently."""
         try:
             result = run(cmd, stdout=PIPE, stderr=PIPE, check=True, text=True)
-            return result.stdout  # Return only stdout
+
+            if result.returncode == 0:
+                return result.stdout  # Return only stdout
+
         except CalledProcessError as e:
-            # print(e)
-            return "Fail"
+            print(f"Error: {e.stderr}")
 
     def create_auth_pipe(self, infrastructure_id):
         """ Create an auth pipe file with credentials based on the infrastructure type. """
@@ -221,9 +224,8 @@ class Apricot_Magics(Magics):
             cmd_scp.append(destination)
 
         # Execute the SCP command using execute_command
-        result = self.execute_command(cmd_scp)
-        if result == "Fail":
-            return "Failed"
+        output = self.execute_command(cmd_scp)
+        print(output)
         
         # Clean up temporary files
         self.cleanup_files('auth-pipe', 'key.pem')
@@ -246,11 +248,11 @@ class Apricot_Magics(Magics):
         cmd_getvminfo = ['python3', self.im_client_path, 'getvminfo', inf_id, '0', 'net_interface.1.ip', '-r', IM_ENDPOINT, '-a', 'auth-pipe']
         output = self.execute_command(cmd_getvminfo)
 
-        if output:
-            # Split the output into lines and return the last line
-            return output.splitlines()[-1].strip()
-        
-        return cmd_getvminfo
+        if not output:
+            return "Pending"
+
+        # Split the output into lines and return the last line
+        return output.splitlines()[-1].strip()
 
     def remove_infrastructure_from_list(self, inf_id):
         # Load infrastructure list from JSON file
@@ -429,21 +431,21 @@ class Apricot_Magics(Magics):
 
         try:
             print("Destroying... Please wait, this may take a few seconds.", end='', flush=True)
-            result = self.execute_command(cmd_destroy)
+            output = self.execute_command(cmd_destroy)
 
             # Clear the message
             print("\r" + " " * len("Destroying... Please wait, this may take a few seconds."), end='', flush=True)
             print("\r", end='', flush=True)
 
-            if result != "Fail":
-                print(result)
+            print(output)
 
-            if "Infrastructure successfully destroyed" in result:
+            if "Infrastructure successfully destroyed" in output:
                 self.remove_infrastructure_from_list(inf_id)
         
         except CalledProcessError as e:
             print(f"Error: {e}")
             return "Failed"
+
         finally:
             self.cleanup_files('auth-pipe', 'key.pem')
 
@@ -539,10 +541,11 @@ class Apricot_Magics(Magics):
                     return "Failed"
 
                 cmd_ssh = ['ssh', '-i', 'key.pem', '-o', 'StrictHostKeyChecking=no', f'{ssh_user}@{host_ip}'] + cmd_command
-                result = self.execute_command(cmd_ssh)
+                output = self.execute_command(cmd_ssh)
 
-                if result != "Fail":
-                    print(result)
+                if output: # Output is not None
+                    print(output)
+
                 return "Done"
 
         elif word1 == "list":
@@ -562,8 +565,6 @@ class Apricot_Magics(Magics):
                     return "Failed"
 
                 self.apricot_destroy(inf_id)
-
-                return "Done"
 
         return "Done"
 
