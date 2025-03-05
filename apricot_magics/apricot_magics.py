@@ -449,52 +449,6 @@ class Apricot_Magics(Magics):
         finally:
             self.cleanup_files('auth-pipe', 'key.pem')
 
-    # @line_magic
-    # async def apricot_destroy2(self, inf_id):
-    #     cmd_destroy = [
-    #         'python3',
-    #         self.im_client_path,
-    #         'destroy',
-    #         inf_id,
-    #         '-r',
-    #         IM_ENDPOINT,
-    #         '-a',
-    #         'auth-pipe',
-    #     ]
-
-    #     try:
-    #         print("Destroying... Please wait, this may take a few seconds.", end='', flush=True)
-    #         # result = self.execute_command(cmd_destroy)
-    #         # Run asynchronously in the background
-    #         result = subprocess.Popen(cmd_destroy, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    #         stdout, stderr = result.communicate()
-
-    #         process = await asyncio.create_subprocess_exec(
-    #             *cmd_destroy,
-    #             stdout=asyncio.subprocess.PIPE,
-    #             stderr=asyncio.subprocess.PIPE
-    #         )
-
-    #         stdout, stderr = await process.communicate()
-
-    #         # Clear the message
-    #         print("\r" + " " * len("Destroying... Please wait, this may take a few seconds."), end='', flush=True)
-    #         print("\r", end='', flush=True)
-
-    #         # if result != "Fail":
-    #         #     print(stdout)
-
-    #         if "Infrastructure successfully destroyed" in result:
-    #             self.remove_infrastructure_from_list(self, inf_id)
-    
-    #     except CalledProcessError as e:
-    #         print(f"Error: {e}")
-    #         return "Failed"
-    #     finally:
-    #         self.cleanup_files('auth-pipe', 'key.pem')
-
-    #     return "Done"
-
     @line_cell_magic
     def apricot(self, code, cell=None):
         # Check if it's a cell call
