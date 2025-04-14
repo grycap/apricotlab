@@ -4,26 +4,30 @@ import {
   getOrStartKernel,
   getInfrastructuresListPath,
   getIMClientPath,
-  createButton
+  createButton,
+  getAuthFilePath,
+  executeKernelCommand
 } from './utils';
 
 interface IInfrastructure {
   IMuser: string;
   IMpass: string;
+  accessToken: string;
   name: string;
   infrastructureID: string;
-  hostId: string;
+  id: string;
   type: string;
   host: string;
   tenant: string;
   user?: string;
   pass?: string;
-  auth_version?: string;
+  authVersion?: string;
+  domain: string;
   vo?: string;
-  EGIToken?: string;
+  custom: string;
 }
 
-const imEndpoint = 'https://im.egi.eu/im';
+const imEndpoint = 'https://deploy.sandbox.eosc-beyond.eu';
 
 async function openListDeploymentsDialog(): Promise<void> {
   try {
@@ -79,6 +83,67 @@ function createTable(): HTMLTableElement {
   });
 
   return table;
+}
+
+async function deleteButton(
+  infrastructure: IInfrastructure,
+  row: HTMLTableRowElement
+): Promise<HTMLButtonElement> {
+  // Create a Delete button inside the action column
+  const deleteButton = createButton('Delete', async () => {
+    const infrastructureId = infrastructure.infrastructureID;
+
+    // Create a loader element
+    const loader = document.createElement('div');
+    loader.className = 'mini-loader';
+    deleteButton.textContent = '';
+
+    try {
+      const cmdDeploy = await destroyInfrastructure(infrastructureId);
+
+      deleteButton.appendChild(loader);
+
+      const outputText = await executeKernelCommand(cmdDeploy);
+
+      if (outputText && outputText.includes('successfully destroyed')) {
+        row.remove();
+
+        Notification.success(
+          `Infrastructure ${infrastructureId} successfully destroyed.`,
+          {
+            autoClose: 5000
+          }
+        );
+        console.log(outputText);
+
+        const cmdDeleteInfra = await removeInfraFromList(infrastructureId);
+        await executeKernelCommand(cmdDeleteInfra);
+      } else {
+        Notification.error(
+          'Error destroying infrastructure. Check the console for more details.',
+          {
+            autoClose: 5000
+          }
+        );
+        console.error('Error destroying infrastructure:', outputText);
+      }
+    } catch (error) {
+      Notification.error(
+        'Error destroying infrastructure. Check the console for more details.',
+        {
+          autoClose: 5000
+        }
+      );
+
+      console.error('Error destroying infrastructure:', error);
+    } finally {
+      // Ensure that the loader is always removed after the try/catch block
+      deleteButton.removeChild(loader);
+      deleteButton.textContent = 'Delete';
+    }
+  });
+
+  return deleteButton;
 }
 
 async function populateTable(table: HTMLTableElement): Promise<void> {
@@ -147,11 +212,10 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
       const stateCell = row.insertCell();
       const actionCell = row.insertCell();
 
-      // Fetch state and IP concurrently using the merged function
       try {
         const [state, ip] = await Promise.all([
-          fetchInfrastructureData(kernel, infrastructure, stateCell, 'state'),
-          fetchInfrastructureData(kernel, infrastructure, ipCell, 'ip')
+          fetchInfrastructureData(infrastructure, 'state'),
+          fetchInfrastructureData(infrastructure, 'ip')
         ]);
 
         // Update state and IP cells
@@ -166,174 +230,28 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
         ipCell.textContent = 'Error';
       }
 
-      // Create a Delete button inside the action column
-      const deleteButton = createButton('Delete', async () => {
-        const infrastructureId = infrastructure.infrastructureID;
-        // const infrastructureName = infrastructure.name;
-
-        const kernel = await getOrStartKernel();
-
-        // Load the magics extension in the kernel
-        const loadExtensionCmd = '%reload_ext apricot_magics';
-        await kernel.requestExecute({ code: loadExtensionCmd }).done;
-
-        // Create a loader element
-        const loader = document.createElement('div');
-        loader.className = 'mini-loader';
-        deleteButton.textContent = '';
-        deleteButton.appendChild(loader);
-
-        try {
-          const cmdDestroyInfra = `%apricot destroy ${infrastructureId}`;
-          const futureDestroyInfra = kernel.requestExecute({
-            code: cmdDestroyInfra
-          });
-
-          futureDestroyInfra.onIOPub = (msg: any) => {
-            const content = msg.content as any;
-
-            const outputData =
-              content.text || (content.data && content.data['text/plain']);
-
-            if (
-              outputData &&
-              outputData.includes('Infrastructure successfully destroyed')
-            ) {
-              row.remove();
-              Notification.success(
-                `Infrastructure ${infrastructureId} successfully destroyed.`,
-                {
-                  autoClose: 5000
-                }
-              );
-            }
-          };
-
-          await futureDestroyInfra.done;
-        } catch (error) {
-          console.error('Error destroying infrastructure:', error);
-          // Remove the loader and restore the button text
-          deleteButton.removeChild(loader);
-          deleteButton.textContent = 'Delete';
-          Notification.error(
-            'Error destroying infrastructure. Check the console for more details.',
-            {
-              autoClose: 5000
-            }
-          );
-        }
-      });
-
-      actionCell.appendChild(deleteButton);
+      const deleteBtn = await deleteButton(infrastructure, row);
+      actionCell.appendChild(deleteBtn);
     })
   );
-}
-
-async function fetchInfrastructureData(
-  kernel: any,
-  infrastructure: IInfrastructure,
-  cell: HTMLTableCellElement,
-  dataType: 'state' | 'ip'
-): Promise<string> {
-  const cmd = await getInfrastructureInfo(infrastructure, dataType);
-
-  return new Promise<string>(resolve => {
-    // Execute the command through the kernel
-    const future = kernel.requestExecute({ code: cmd });
-
-    future.onIOPub = (msg: any) => {
-      const content = msg.content as any;
-      const outputData =
-        content.text || (content.data && content.data['text/plain']);
-
-      if (outputData && outputData.trim() !== '') {
-        console.log(`Received output for ${dataType}:`, outputData);
-
-        let result: string;
-
-        // Check if the output contains "error" in the message
-        if (outputData.toLowerCase().includes('error')) {
-          result = 'Fail';
-        } else {
-          // Process output based on dataType if no error is present
-          if (dataType === 'state') {
-            const stateWords = outputData.trim().split(' ');
-            const stateIndex = stateWords.indexOf('state:');
-            result =
-              stateIndex !== -1 && stateIndex < stateWords.length - 1
-                ? stateWords[stateIndex + 1].trim()
-                : 'Error';
-          } else {
-            // Extract IP from output for dataType 'ip'
-            const ipWords = outputData.trim().split(' ');
-            result = ipWords[ipWords.length - 1] || 'Error';
-          }
-        }
-
-        resolve(result);
-      }
-    };
-  });
 }
 
 async function getInfrastructureInfo(
   infrastructure: IInfrastructure,
   dataType: 'state' | 'ip'
 ): Promise<string> {
-  const {
-    IMuser,
-    IMpass,
-    infrastructureID,
-    hostId,
-    type,
-    host,
-    user = '',
-    pass = '',
-    tenant = '',
-    auth_version = '',
-    vo = '',
-    EGIToken = ''
-  } = infrastructure;
+  const infrastructureID = infrastructure.infrastructureID;
 
-  const pipeAuth = 'auth-pipe';
   const imClientPath = await getIMClientPath();
-
-  let authContent = `id=im; type=InfrastructureManager; username=${IMuser}; password=${IMpass};\n`;
-  authContent += `id=${hostId}; type=${type}; host=${host};`;
-
-  switch (type) {
-    case 'OpenStack':
-      authContent += ` username=${user}; password=${pass}; tenant=${tenant}; ${auth_version ? `auth_version=${auth_version};` : ''}`;
-      break;
-    case 'OpenNebula':
-      authContent += ` username=${user}; password=${pass};`;
-      break;
-    case 'EC2':
-      authContent += ` username=${user}; password=${pass};`;
-      break;
-    case 'EGI':
-      authContent += ` vo=${vo}; token=${EGIToken};`;
-      break;
-    default:
-      authContent += '';
-  }
+  const authFilePath = await getAuthFilePath();
 
   const cmd = `%%bash
                 PWD=$(pwd)
-                # Remove pipes if they exist
-                rm -f $PWD/${pipeAuth} &> /dev/null
-                # Create pipes
-                mkfifo $PWD/${pipeAuth}
-                # Command to create the infrastructure manager client credentials
-                echo -e "${authContent}" > $PWD/${pipeAuth} &
-
                 if [ "${dataType}" = "state" ]; then
-                    stateOut=$(python3 ${imClientPath} getstate ${infrastructureID} -r ${imEndpoint} -a $PWD/${pipeAuth})
+                    stateOut=$(python3 ${imClientPath} getstate ${infrastructureID} -r ${imEndpoint} -a $PWD/${authFilePath})
                 else
-                    stateOut=$(python3 ${imClientPath} getvminfo ${infrastructureID} 0 net_interface.1.ip -r ${imEndpoint} -a $PWD/${pipeAuth})
+                    stateOut=$(python3 ${imClientPath} getvminfo ${infrastructureID} 0 net_interface.1.ip -r ${imEndpoint} -a $PWD/${authFilePath})
                 fi
-                # Remove pipe
-                rm -f $PWD/${pipeAuth} &> /dev/null
                 # Print state output on stderr or stdout
                 if [ $? -ne 0 ]; then
                     >&2 echo -e $stateOut
@@ -345,6 +263,84 @@ async function getInfrastructureInfo(
 
   console.log(`Get ${dataType} command: `, cmd);
   return cmd;
+}
+
+async function fetchInfrastructureData(
+  infrastructure: IInfrastructure,
+  dataType: 'state' | 'ip'
+): Promise<string> {
+  try {
+    const cmd = await getInfrastructureInfo(infrastructure, dataType);
+    const outputData = await executeKernelCommand(cmd);
+
+    if (!outputData || outputData.trim() === '') {
+      return 'No Output';
+    }
+
+    console.log(`Received output for ${dataType}:`, outputData);
+
+    let result: string;
+
+    if (outputData.toLowerCase().includes('error')) {
+      result = outputData;
+    } else {
+      if (dataType === 'state') {
+        const stateWords = outputData.trim().split(' ');
+        const stateIndex = stateWords.indexOf('state:');
+        result =
+          stateIndex !== -1 && stateIndex < stateWords.length - 1
+            ? stateWords[stateIndex + 1].trim()
+            : 'Error';
+      } else {
+        const ipWords = outputData.trim().split(' ');
+        result = ipWords[ipWords.length - 1] || 'Error';
+      }
+    }
+
+    return result;
+  } catch (error) {
+    console.error(`Error fetching ${dataType}:`, error);
+    return 'Error';
+  }
+}
+
+async function destroyInfrastructure(
+  infrastructureID: string
+): Promise<string> {
+  const imClientPath = await getIMClientPath();
+  const authFilePath = await getAuthFilePath();
+
+  const cmd = `%%bash
+            PWD=$(pwd)
+            # Create final command where the output is stored in "destroyOut"
+            destroyOut=$(python3 ${imClientPath} destroy ${infrastructureID} -a $PWD/${authFilePath} -r ${imEndpoint})
+            # Print IM output on stderr or stdout
+            if [ $? -ne 0 ]; then
+                >&2 echo -e $destroyOut
+                exit 1
+            else
+                echo -e $destroyOut
+            fi
+          `;
+
+  console.log(cmd);
+  return cmd;
+}
+
+async function removeInfraFromList(infrastructureID: string): Promise<string> {
+  const infrastructuresListPath = await getInfrastructuresListPath();
+
+  // Create a Bash command to remove the infrastructure from the JSON file
+  const cmdDeleteInfra = `
+    %%bash
+    PWD=$(pwd)
+    existingJson=$(cat ${infrastructuresListPath})
+    newJson=$(echo "$existingJson" | jq -c 'del(.infrastructures[] | select(.infrastructureID == "${infrastructureID}"))')
+    echo "$newJson" > ${infrastructuresListPath}
+  `;
+
+  console.log(`Bash Command: ${cmdDeleteInfra}`);
+  return cmdDeleteInfra;
 }
 
 export { openListDeploymentsDialog };

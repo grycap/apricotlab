@@ -1,5 +1,5 @@
 import * as jsyaml from 'js-yaml';
-import { ContentsManager, KernelManager } from '@jupyterlab/services';
+import { ContentsManager } from '@jupyterlab/services';
 import { Widget } from '@lumino/widgets';
 import { Dialog, Notification } from '@jupyterlab/apputils';
 import {
@@ -8,12 +8,14 @@ import {
   getInfrastructuresListPath,
   getIMClientPath,
   getDeployedTemplatePath,
+  getAuthFilePath,
   createButton
 } from './utils';
 
 interface IDeployInfo {
-  IMuser: string;
-  IMpass: string;
+  // IMuser: string;
+  // IMpass: string;
+  accessToken: any;
   recipe: string;
   id: string;
   deploymentType: string;
@@ -25,7 +27,7 @@ interface IDeployInfo {
   authVersion: string;
   domain: string;
   vo: string;
-  EGIToken: any;
+  custom: string;
   worker: {
     num_instances: number;
     num_cpus: number;
@@ -64,8 +66,9 @@ type UserInput = {
 };
 
 interface IInfrastructureData {
-  IMuser: string;
-  IMpass: string;
+  // IMuser: string;
+  // IMpass: string;
+  accessToken: string;
   name: string;
   infrastructureID: string;
   id: string;
@@ -77,12 +80,13 @@ interface IInfrastructureData {
   authVersion: string;
   domain: string;
   vo: string;
-  EGIToken: string;
+  custom: string;
 }
 
 const deployInfo: IDeployInfo = {
-  IMuser: '',
-  IMpass: '',
+  // IMuser: '',
+  // IMpass: '',
+  accessToken: '',
   recipe: '',
   id: '',
   deploymentType: '',
@@ -94,7 +98,7 @@ const deployInfo: IDeployInfo = {
   authVersion: '',
   domain: '',
   vo: '',
-  EGIToken: '',
+  custom: 'false',
   worker: {
     num_instances: 1,
     num_cpus: 1,
@@ -108,7 +112,7 @@ const deployInfo: IDeployInfo = {
 
 const recipes: IRecipe[] = [
   {
-    name: 'Simple-node-disk',
+    name: 'Simple node disk',
     childs: ['galaxy', 'ansible_tasks', 'noderedvm', 'minio_compose']
   },
   {
@@ -126,6 +130,10 @@ const recipes: IRecipe[] = [
       'influxdb',
       'argo'
     ]
+  },
+  {
+    name: 'Custom recipe',
+    childs: []
   }
 ];
 
@@ -140,7 +148,7 @@ let imageOptions: { uri: string; name: string }[] = [];
 
 let deploying = false; // Flag to prevent multiple deployments at the same time
 
-const imEndpoint = 'https://im.egi.eu/im';
+const imEndpoint = 'https://deploy.sandbox.eosc-beyond.eu';
 
 //*****************//
 //* Aux functions *//
@@ -149,7 +157,7 @@ const imEndpoint = 'https://im.egi.eu/im';
 async function openDeploymentDialog(): Promise<void> {
   const dialogContent = document.createElement('div');
 
-  deployChooseProvider(dialogContent);
+  deployRecipeType(dialogContent);
 
   const contentWidget = new Widget({ node: dialogContent });
 
@@ -158,6 +166,19 @@ async function openDeploymentDialog(): Promise<void> {
     body: contentWidget,
     buttons: []
   });
+
+  // Prevent the use of the Enter button, except in text areas
+  (dialog as any)._evtKeydown = (event: KeyboardEvent) => {
+    const target = event.target as HTMLElement;
+
+    const isTextArea = target && target.tagName === 'TEXTAREA';
+
+    // Allow Enter in textarea, block everywhere else
+    if ((event.key === 'Enter' || event.key === 'Escape') && !isTextArea) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
 
   dialog.launch();
 }
@@ -197,14 +218,25 @@ async function computeHash(input: string): Promise<string> {
   return hashHex;
 }
 
-async function generateIMCredentials(): Promise<void> {
-  const randomInput = `${Date.now()}-${Math.random()}`;
-  const hash = await computeHash(randomInput);
-  // Use first 16 characters for user and next 16 characters for password
-  const user = hash.substring(0, 16);
-  const pass = hash.substring(16, 32);
-  deployInfo.IMuser = user;
-  deployInfo.IMpass = pass;
+// async function generateIMCredentials(): Promise<void> {
+//   const randomInput = `${Date.now()}-${Math.random()}`;
+//   const hash = await computeHash(randomInput);
+//   // Use first 16 characters for user and next 16 characters for password
+//   const user = hash.substring(0, 16);
+//   const pass = hash.substring(16, 32);
+//   deployInfo.IMuser = user;
+//   deployInfo.IMpass = pass;
+// }
+
+function detectRecipeFormat(content: string): 'radl' | 'yaml' | 'json' {
+  const trimmed = content.trim();
+  if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+    return 'json';
+  }
+  if (trimmed.includes('tosca_definitions_version')) {
+    return 'yaml';
+  }
+  return 'radl';
 }
 
 async function createImagesDropdown(
@@ -219,15 +251,20 @@ async function createImagesDropdown(
   // Check if the output contains "error" in the message
   if (output.toLowerCase().includes('error')) {
     console.error(output);
-    Notification.error('No OS images found. Bad provider credentials.', {
-      autoClose: 5000
-    });
+    Notification.error(
+      'No OS images found. Bad provider credentials or expired token.',
+      {
+        autoClose: 5000
+      }
+    );
   }
 
   // Find the first occurrence of '[' and get the substring from there
   const jsonStartIndex = output.indexOf('[');
   if (jsonStartIndex === -1) {
-    console.error('No OS images found. Check provider credentials.');
+    console.error(
+      'No OS images found. Check provider credentials or valid access token.'
+    );
     return;
   }
 
@@ -436,36 +473,26 @@ async function createChildsForm(
 
 async function selectImage(obj: IDeployInfo): Promise<string> {
   const imClientPath = await getIMClientPath();
-  const pipeAuth = `${obj.infName}-auth-pipe`;
-
-  let cmd = `%%bash
-            PWD=$(pwd)
-            # Remove pipes if they exist
-            rm -f $PWD/${pipeAuth} &> /dev/null
-            # Create directory for templates
-            mkdir -p $PWD/templates &> /dev/null
-            # Create pipes
-            mkfifo $PWD/${pipeAuth}
-         `;
+  const authFilePath = await getAuthFilePath();
 
   // Command to create the IM-cli credentials
-  let authContent = `id = im; type = InfrastructureManager; username = ${obj.IMuser}; password = ${obj.IMpass};\n`;
+  let authContent = `id = im; type = InfrastructureManager; token = ${obj.accessToken};\n`;
   authContent += `id = ${obj.id}; type = ${obj.deploymentType}; host = ${obj.host}; `;
 
   if (obj.deploymentType === 'OpenNebula') {
     authContent += ` username = ${obj.username}; password = ${obj.password};`;
   } else if (obj.deploymentType === 'OpenStack') {
-    authContent += `username = ${obj.username}; password = ${obj.password}; tenant = ${obj.tenant}; auth_version = ${obj.authVersion};
-                domain = ${obj.domain}`;
+    authContent += `username = ${obj.username}; password = ${obj.password}; tenant = ${obj.tenant}; auth_version = ${obj.authVersion}; domain = ${obj.domain}`;
   } else if (obj.deploymentType === 'EGI') {
-    authContent += ` vo = ${obj.vo}; token = ${obj.EGIToken}`;
+    authContent += ` vo = ${obj.vo}; token = ${obj.accessToken}`;
   }
 
-  cmd += `echo -e "${authContent}" > $PWD/${pipeAuth} &
+  const cmd = `%%bash
+            PWD=$(pwd)
+            # Overwrite the auth file with new content
+            echo -e "${authContent}" > $PWD/${authFilePath}
             # Create final command where the output is stored in "imageOut"
-            imageOut=$(python3 ${imClientPath} -a $PWD/${pipeAuth} -r ${imEndpoint} cloudimages ${obj.id})
-            # Remove pipe
-            rm -f $PWD/${pipeAuth} &> /dev/null
+            imageOut=$(python3 ${imClientPath} -a $PWD/${authFilePath} -r ${imEndpoint} cloudimages ${obj.id})
             # Print IM output on stderr or stdout
             if [ $? -ne 0 ]; then
                 >&2 echo -e $imageOut
@@ -473,81 +500,69 @@ async function selectImage(obj: IDeployInfo): Promise<string> {
             else
                 echo -e $imageOut
             fi
-            `;
+          `;
 
   console.log('Get cloud images:', cmd);
   return cmd;
 }
 
-const getEGIToken = async () => {
-  const code = `%%bash
-                if [ -f /var/run/secrets/egi.eu/access_token ]; then
-                  cat /var/run/secrets/egi.eu/access_token
-                else
-                  echo ""
-                fi
-              `;
-  const kernelManager = new KernelManager();
-  const kernel = await kernelManager.startNew();
-  const future = kernel.requestExecute({ code });
+const getAccessToken = async (): Promise<string> => {
+  try {
+    const authFilePath = await getAuthFilePath();
 
-  return new Promise(resolve => {
-    future.onIOPub = async msg => {
-      const content = msg.content as any;
-      const outputText =
-        content.text || (content.data && content.data['text/plain']);
-      resolve(outputText.trim());
-    };
-  });
+    const code = `%%bash
+      if [ -f ${authFilePath} ]; then
+        token=$(grep -oP 'token\\s*=\\s*\\K[^;]+' ${authFilePath})  # Extract the token
+        if [ -z "$token" ]; then
+          echo "NO_TOKEN"
+        else
+          echo "$token"
+        fi
+      else
+        echo "Auth file does not exist at: ${authFilePath}"
+        echo "NO_TOKEN"
+      fi
+    `;
+
+    const outputText = await executeKernelCommand(code);
+
+    const token = outputText.trim();
+
+    return token === 'NO_TOKEN' ? '' : token;
+  } catch (error) {
+    console.log('Error getting access token from authfile:', error);
+    throw error;
+  }
 };
 
 async function deployIMCommand(
   obj: IDeployInfo,
   mergedTemplate: string
 ): Promise<string> {
-  const pipeAuth = `${obj.infName}-auth-pipe`;
-  const deployedTemplatePath = await getDeployedTemplatePath();
+  const format = detectRecipeFormat(mergedTemplate);
+  console.log('Detected format:', format);
+
+  const deployedTemplatePath = await getDeployedTemplatePath(format);
   const imClientPath = await getIMClientPath();
+  const authFilePath = await getAuthFilePath();
 
-  let cmd = `%%bash
-            PWD=$(pwd)
-            # Remove pipes if they exist
-            rm -f $PWD/${pipeAuth} &> /dev/null
-            # Create directory for templates
-            mkdir -p $PWD/templates &> /dev/null
-            # Create pipes
-            mkfifo $PWD/${pipeAuth}
-            # Save mergedTemplate as a YAML file
-            echo '${mergedTemplate}' > ${deployedTemplatePath}
-          `;
+  const cmd = `%%bash
+PWD=$(pwd)
 
-  // Create the IM-cli credentials based on deployment type
-  let authContent = `id = im; type = InfrastructureManager; username = ${obj.IMuser}; password = ${obj.IMpass};\n`;
-  authContent += `id = ${obj.id}; type = ${obj.deploymentType}; `;
-
-  if (obj.deploymentType === 'EC2') {
-    authContent += `username = ${obj.username}; password = ${obj.password}; `;
-  } else if (obj.deploymentType === 'OpenNebula') {
-    authContent += `username = ${obj.username}; password = ${obj.password}; host = ${obj.host}; `;
-  } else if (obj.deploymentType === 'OpenStack') {
-    authContent += `username = ${obj.username}; password = ${obj.password}; tenant = ${obj.tenant}; auth_version = ${obj.authVersion}; domain = ${obj.domain}; host = ${obj.host}; `;
-  } else if (obj.deploymentType === 'EGI') {
-    authContent += `vo = ${obj.vo}; token = ${obj.EGIToken}; host = ${obj.host}; `;
-  }
-
-  cmd += `echo -e "${authContent}" > $PWD/${pipeAuth} &
-            # Create final command where the output is stored in "imageOut"
-            imageOut=$(python3 ${imClientPath} -a $PWD/${pipeAuth} create ${deployedTemplatePath} -r ${imEndpoint})
-            # Remove pipe
-            rm -f $PWD/${pipeAuth} &> /dev/null
-            # Print IM output on stderr or stdout
-            if [ $? -ne 0 ]; then
-                >&2 echo -e $imageOut
-                exit 1
-            else
-                echo -e $imageOut
-            fi
-            `;
+# Save mergedTemplate in a file
+cat << 'EOF' > ${deployedTemplatePath}
+${mergedTemplate}
+EOF
+# Run IM CLI to deploy using the shared auth file
+imageOut=$(python3 ${imClientPath} -a $PWD/${authFilePath} create ${deployedTemplatePath} -r ${imEndpoint})
+# Print IM output on stderr or stdout
+if [ $? -ne 0 ]; then
+    >&2 echo -e $imageOut
+    exit 1
+else
+    echo -e $imageOut
+fi
+`;
 
   console.log('TOSCA recipe deployed:', cmd);
   return cmd;
@@ -574,34 +589,13 @@ async function saveToInfrastructureList(
 //*  Deployment  *//
 //****************//
 
-generateIMCredentials().then(() => {
-  console.log(
-    'Generated random IM credentials:',
-    deployInfo.IMuser,
-    deployInfo.IMpass
-  );
-});
-
-const deployChooseProvider = (dialogBody: HTMLElement): void => {
-  dialogBody.innerHTML = '';
-
-  const paragraph = document.createElement('p');
-  paragraph.textContent = 'Select infrastructure provider:';
-  dialogBody.appendChild(paragraph);
-
-  // Create buttons for each provider
-  Object.keys(providers).forEach(provider => {
-    const providerData = providers[provider as keyof typeof providers];
-    const button = createButton(provider, () => {
-      deployInfo.id = providerData.id;
-      deployInfo.deploymentType = providerData.deploymentType;
-
-      deployRecipeType(dialogBody);
-      console.log(`Provider ${provider} selected`);
-    });
-    dialogBody.appendChild(button);
-  });
-};
+// generateIMCredentials().then(() => {
+//   console.log(
+//     'Generated random IM credentials:',
+//     deployInfo.IMuser,
+//     deployInfo.IMpass
+//   );
+// });
 
 const deployRecipeType = (dialogBody: HTMLElement): void => {
   dialogBody.innerHTML = '';
@@ -615,30 +609,25 @@ const deployRecipeType = (dialogBody: HTMLElement): void => {
     const button = createButton(recipe.name, async () => {
       // Remove all children except buttons
       Array.from(dialogBody.children).forEach(child => {
-        if (
-          !child.classList.contains('recipe-button') &&
-          !child.classList.contains('back-button')
-        ) {
+        if (!child.classList.contains('recipe-button')) {
           dialogBody.removeChild(child);
         }
       });
 
       deployInfo.recipe = recipe.name;
 
-      await createCheckboxesForChilds(dialogBody, recipe.childs);
+      if (recipe.name === 'Custom recipe') {
+        customRecipe(dialogBody);
+      } else {
+        await createCheckboxesForChilds(dialogBody, recipe.childs);
+      }
     });
     button.classList.add('recipe-button');
     dialogBody.appendChild(button);
   });
 
-  const backButton = createButton('Back', () => {
-    deployChooseProvider(dialogBody);
-  });
-  backButton.classList.add('back-button');
-
   const buttonContainer = document.createElement('div');
   buttonContainer.classList.add('footer-button-container');
-  buttonContainer.appendChild(backButton);
 
   dialogBody.appendChild(buttonContainer);
 };
@@ -699,21 +688,15 @@ const createCheckboxesForChilds = async (
     li.appendChild(checkbox);
     li.appendChild(label);
 
-    // Append list item to checkbox grid
     ul.appendChild(li);
   });
 
   await Promise.all(promises);
 
-  // Append checkbox grid to dialog body
   dialogBody.appendChild(ul);
 
   const buttonContainer = document.createElement('div');
   buttonContainer.className = 'footer-button-container';
-
-  const backBtn = createButton('Back', () => deployChooseProvider(dialogBody));
-  backBtn.classList.add('back-button');
-  buttonContainer.appendChild(backBtn);
 
   const nextButton = createButton('Next', () => {
     // Populate deployInfo.childs
@@ -721,9 +704,91 @@ const createCheckboxesForChilds = async (
       dialogBody.querySelectorAll('input[type="checkbox"]:checked')
     ).map((checkbox: Element) => (checkbox as HTMLInputElement).name);
     deployInfo.childs = selectedChilds;
-    deployProviderCredentials(dialogBody);
+    deployChooseProvider(dialogBody);
   });
   buttonContainer.appendChild(nextButton);
+
+  dialogBody.appendChild(buttonContainer);
+};
+
+const customRecipe = async (dialogBody: HTMLElement): Promise<void> => {
+  dialogBody.innerHTML = '';
+  const textarea = document.createElement('textarea');
+  textarea.placeholder = 'Recipe in RADL, YAML or JSON format.';
+  textarea.classList.add('recipe-textarea');
+  dialogBody.appendChild(textarea);
+
+  const text = '<p>Introduce your custom recipe.</p><br>';
+
+  dialogBody.insertAdjacentHTML('afterbegin', text);
+
+  const buttonContainer = document.createElement('div');
+  buttonContainer.className = 'footer-button-container';
+
+  const backBtn = createButton('Back', () => deployRecipeType(dialogBody));
+
+  const nextButton = createButton('Deploy', async () => {
+    const recipe = textarea.value;
+    deployInfo.infName = '';
+    deployInfo.id = '';
+    deployInfo.deploymentType = '';
+    deployInfo.host = '';
+    deployInfo.tenant = '';
+    deployInfo.username = '';
+    deployInfo.password = '';
+    deployInfo.authVersion = '';
+    deployInfo.domain = '';
+    deployInfo.vo = '';
+    deployInfo.accessToken = '';
+    deployInfo.custom = 'true';
+
+    try {
+      const cmdDeploy = await deployIMCommand(deployInfo, recipe);
+
+      dialogBody.innerHTML =
+        '<div class="loader-container"><div class="loader"></div></div>';
+
+      const outputText = await executeKernelCommand(cmdDeploy);
+      handleFinalDeployOutput(outputText, dialogBody);
+    } catch (error) {
+      console.error('Error during deployment:', error);
+      deploying = false;
+    }
+  });
+
+  buttonContainer.appendChild(backBtn);
+  buttonContainer.appendChild(nextButton);
+  dialogBody.appendChild(buttonContainer);
+};
+
+const deployChooseProvider = (dialogBody: HTMLElement): void => {
+  dialogBody.innerHTML = '';
+
+  const paragraph = document.createElement('p');
+  paragraph.textContent = 'Select infrastructure provider:';
+  dialogBody.appendChild(paragraph);
+
+  // Create buttons for each provider
+  Object.keys(providers).forEach(provider => {
+    const providerData = providers[provider as keyof typeof providers];
+    const button = createButton(provider, () => {
+      deployInfo.id = providerData.id;
+      deployInfo.deploymentType = providerData.deploymentType;
+
+      deployProviderCredentials(dialogBody);
+      console.log(`Provider ${provider} selected`);
+    });
+    dialogBody.appendChild(button);
+  });
+
+  const backButton = createButton('Back', () => {
+    deployRecipeType(dialogBody);
+  });
+  backButton.classList.add('back-button');
+
+  const buttonContainer = document.createElement('div');
+  buttonContainer.classList.add('footer-button-container');
+  buttonContainer.appendChild(backButton);
 
   dialogBody.appendChild(buttonContainer);
 };
@@ -758,6 +823,12 @@ const deployProviderCredentials = async (
 
     case 'OpenNebula':
     case 'OpenStack':
+      // Get the access token to fill the form
+      await getAccessToken().then(token => {
+        const tokenStr = String(token);
+        deployInfo.accessToken = tokenStr;
+      });
+
       text = `<p>Introduce ${deployInfo.deploymentType === 'OpenNebula' ? 'ONE' : 'OST'} credentials.</p><br>`;
       addFormInput(form, 'Username:', 'username', deployInfo.username);
       addFormInput(
@@ -778,26 +849,29 @@ const deployProviderCredentials = async (
           deployInfo.authVersion
         );
       }
+      addFormInput(
+        form,
+        'Access token:',
+        'access_token',
+        deployInfo.accessToken
+      );
       break;
 
     case 'EGI':
-      await getEGIToken().then(token => {
-        console.log('EGI Token:', token);
+      await getAccessToken().then(token => {
         const tokenStr = String(token);
-        deployInfo.EGIToken = tokenStr;
-        const tokenInput = document.getElementById(
-          'egiToken'
-        ) as HTMLInputElement;
-        if (tokenInput) {
-          console.log('EGI Token tokenStr:', tokenStr);
-          tokenInput.value = tokenStr;
-        }
+        deployInfo.accessToken = tokenStr;
       });
 
       text = '<p>Introduce EGI credentials.</p><br>';
       addFormInput(form, 'VO:', 'vo', deployInfo.vo);
       addFormInput(form, 'Site name:', 'site', deployInfo.host);
-      addFormInput(form, 'Access token:', 'egiToken', deployInfo.EGIToken);
+      addFormInput(
+        form,
+        'Access token:',
+        'access_token',
+        deployInfo.accessToken
+      );
       break;
   }
 
@@ -807,7 +881,7 @@ const deployProviderCredentials = async (
   buttonContainer.className = 'footer-button-container';
 
   const backBtn = createButton('Back', () => {
-    deployRecipeType(dialogBody);
+    deployChooseProvider(dialogBody);
     deployInfo.host = '';
     deployInfo.tenant = '';
     deployInfo.username = '';
@@ -815,7 +889,7 @@ const deployProviderCredentials = async (
     deployInfo.authVersion = '';
     deployInfo.domain = '';
     deployInfo.vo = '';
-    deployInfo.EGIToken = '';
+    deployInfo.accessToken = '';
   });
   const nextButton = createButton('Next', async () => {
     const form = dialogBody.querySelector('form'); // Get the form element
@@ -859,12 +933,13 @@ const deployProviderCredentials = async (
           deployInfo.domain = getInputValue('domain');
           deployInfo.authVersion = getInputValue('authVersion');
         }
+        deployInfo.accessToken = getInputValue('access_token');
         break;
 
       case 'EGI':
         deployInfo.host = getInputValue('site');
         deployInfo.vo = getInputValue('vo');
-        deployInfo.EGIToken = getInputValue('egiToken');
+        deployInfo.accessToken = getInputValue('access_token');
         break;
     }
 
@@ -1008,7 +1083,9 @@ async function deployInfraConfiguration(
       dropdownContainer.removeChild(loader); // Remove the loader once done
 
       await createImagesDropdown(outputText, dropdownContainer); // Pass the container to hold the dropdown
-      nextBtn.disabled = false;
+      if (dropdownContainer.querySelector('select') !== null) {
+        nextBtn.disabled = false;
+      }
     } catch (error) {
       console.error('Error executing deployment command:', error);
     }
@@ -1191,9 +1268,13 @@ const handleFinalDeployOutput = async (
       }
     );
 
-    deployInfo.childs.length === 0
-      ? deployInfraConfiguration(dialogBody)
-      : deployChildsConfiguration(dialogBody);
+    if (deployInfo.custom === 'true') {
+      customRecipe(dialogBody);
+    } else {
+      deployInfo.childs.length === 0
+        ? deployInfraConfiguration(dialogBody)
+        : deployChildsConfiguration(dialogBody);
+    }
   } else {
     dialogBody.innerHTML = `
         <div class="success-container">
@@ -1214,8 +1295,9 @@ const handleFinalDeployOutput = async (
 
     // Create a JSON object for infrastructure data
     const infrastructureData: IInfrastructureData = {
-      IMuser: deployInfo.IMuser,
-      IMpass: deployInfo.IMpass,
+      // IMuser: deployInfo.IMuser,
+      // IMpass: deployInfo.IMpass,
+      accessToken: deployInfo.accessToken,
       name: deployInfo.infName,
       infrastructureID,
       id: deployInfo.id,
@@ -1227,7 +1309,7 @@ const handleFinalDeployOutput = async (
       authVersion: deployInfo.authVersion,
       domain: deployInfo.domain,
       vo: deployInfo.vo,
-      EGIToken: deployInfo.EGIToken
+      custom: deployInfo.custom
     };
 
     const cmdSave = await saveToInfrastructureList(infrastructureData);

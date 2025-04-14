@@ -39,6 +39,17 @@
   font-weight: 500;
 }
 
+/* Styles for the text area */
+.recipe-textarea {
+  width: 40vw;
+  aspect-ratio: 4 / 5;
+  height: auto;
+}
+
+.recipe-textarea:focus {
+  outline-color: #f6a83a;
+}
+
 /* Styles for the table */
 .deployments-table {
   width: 100%;
@@ -154,7 +165,7 @@
 }
 
 .jp-Button:focus,
-.jp-Button.active {
+.jp-Button:active {
   background-color: #f6a83a;
 }
 
@@ -173,7 +184,7 @@
 }
 
 .child-buttons:focus,
-.child-buttons.active {
+.child-buttons:active {
   background-color: #f6a83a;
 }
 
