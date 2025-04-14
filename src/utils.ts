@@ -64,14 +64,16 @@ export async function getIMClientPath(): Promise<string> {
   );
 }
 
-export async function getDeployedTemplatePath(): Promise<string> {
+export async function getDeployedTemplatePath(
+  ext: 'yaml' | 'json' | 'radl'
+): Promise<string> {
   const cmdDeployedTemplatePath = `
     %%bash
-    realpath --relative-to="$(pwd)" resources/deployed-template.yaml
+    realpath --relative-to="$(pwd)" resources/deployed-template.${ext}
   `;
   return getPath(
     cmdDeployedTemplatePath,
-    'Failed to find deployed-template.yaml. Maybe it is not in the resources folder. Check the console for more details.'
+    `Failed to find resources/deployed-template.${ext}. Maybe it is not in the resources folder. Check the console for more details.`
   );
 }
 
@@ -82,7 +84,7 @@ export async function getInfrastructuresListPath(): Promise<string> {
   `;
   return getPath(
     cmdInfrastructuresListPath,
-    'Failed to find infrastructuresList.json. Maybe it is not in the resources folder. Check the console for more details.'
+    'Failed to find resources/infrastructuresList.json. Maybe it is not in the resources folder. Check the console for more details.'
   );
 }
 
@@ -93,7 +95,18 @@ export async function getDeployableTemplatesPath(): Promise<string> {
   `;
   return getPath(
     cmdTemplatesPath,
-    'Failed to find deployable_templates/ directory. Maybe it is not in the project folder. Check the console for more details.'
+    'Failed to find resources/deployable_templates/ directory. Maybe it is not in the project folder. Check the console for more details.'
+  );
+}
+
+export async function getAuthFilePath(): Promise<string> {
+  const cmdTemplatesPath = `
+    %%bash
+    realpath --relative-to="$(pwd)" resources/authfile
+  `;
+  return getPath(
+    cmdTemplatesPath,
+    'Failed to find resources/authfile directory. Maybe it is not in the project folder. Check the console for more details.'
   );
 }
 
