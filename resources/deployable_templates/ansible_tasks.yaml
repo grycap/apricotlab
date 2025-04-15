@@ -5,8 +5,9 @@ imports:
 
 description: Deploy user defined Ansible tasks.
 
+
 metadata:
-  template_version: '1.0.0'
+  template_version: "1.0.0"
   template_name: Ansible
   display_name: Ansible tasks
   icon: images/ansible.png
@@ -20,17 +21,19 @@ metadata:
 
 topology_template:
   inputs:
+
     ansible_tasks:
       type: string
       description: Ansible tasks (In case of using double quotes you have to escape it with \)
-      default: ''
+      default: ""
 
     ansible_url:
       type: string
       description: or specify an URL of a set of Ansible tasks
-      default: ''
+      default: ""
 
   node_templates:
+
     ansible:
       type: tosca.nodes.SoftwareComponent
       interfaces:
