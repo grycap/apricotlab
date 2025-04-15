@@ -1,7 +1,6 @@
 import { Dialog, Notification } from '@jupyterlab/apputils';
 import { Widget } from '@lumino/widgets';
 import {
-  getOrStartKernel,
   getInfrastructuresListPath,
   getIMClientPath,
   createButton,
@@ -150,22 +149,14 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
   let jsonData: string | null = null;
   const infrastructuresListPath = await getInfrastructuresListPath();
 
-  const kernel = await getOrStartKernel();
-
   try {
-    // Read infrastructuresList.json
-    const cmdReadJson = `%%bash
-                        cat "${infrastructuresListPath}"`;
-    const futureReadJson = kernel.requestExecute({ code: cmdReadJson });
-
-    futureReadJson.onIOPub = (msg: any) => {
-      const content = msg.content as any;
-      if (content && content.text) {
-        jsonData = (jsonData || '') + content.text;
-      }
-    };
-
-    await futureReadJson.done;
+    // Safely load JSON using Python
+    const cmdReadJson = `
+  import json
+  with open("${infrastructuresListPath}", "r") as f:
+      print(json.dumps(json.load(f)))
+    `;
+    jsonData = await executeKernelCommand(cmdReadJson);
 
     if (!jsonData) {
       throw new Error('infrastructuresList.json does not exist in the path.');
