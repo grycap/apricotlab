@@ -6,7 +6,7 @@ imports:
 description: Make SLURM Virtual Cluster Elastic.
 
 metadata:
-  template_version: '1.0.1'
+  template_version: "1.0.1"
   template_name: Elastic
   display_name: Make SLURM Virtual Cluster Elastic
   icon: images/elasticity.png
@@ -26,31 +26,20 @@ topology_template:
       required: yes
 
   node_templates:
+
     elastic_cluster_front_end:
       type: tosca.nodes.ec3.ElasticCluster
       properties:
-        im_auth: ''
+        im_auth: ""
         powermanager_plugin: im
         config_options:
           - { section: 'scheduling', option: 'IDLE_TIME', value: '300' }
-          - {
-              section: 'scheduling',
-              option: 'RECONSIDER_JOB_TIME',
-              value: '60'
-            }
+          - { section: 'scheduling', option: 'RECONSIDER_JOB_TIME', value: '60' }
           - { section: 'monitoring', option: 'MAX_WAIT_POWERON', value: '3000' }
           - { section: 'monitoring', option: 'MAX_WAIT_POWEROFF', value: '600' }
           - { section: 'monitoring', option: 'PERIOD_LIFECYCLE', value: '20' }
-          - {
-              section: 'monitoring',
-              option: 'PERIOD_MONITORING_NODES',
-              value: '20'
-            }
-          - {
-              section: 'client',
-              option: 'CLUES_REQUEST_WAIT_TIMEOUT',
-              value: '3000'
-            }
+          - { section: 'monitoring', option: 'PERIOD_MONITORING_NODES', value: '20' }
+          - { section: 'client', option: 'CLUES_REQUEST_WAIT_TIMEOUT', value: '3000' }
       capabilities:
         endpoint:
           properties:
@@ -77,7 +66,7 @@ topology_template:
             max_instances: { get_input: max_wn_num }
             min_instances: 0
       properties:
-        front_end_ip: { get_attribute: [lrms_server, private_address, 0] }
-        public_front_end_ip: { get_attribute: [lrms_server, public_address, 0] }
+        front_end_ip: { get_attribute: [ lrms_server, private_address, 0 ] }
+        public_front_end_ip: { get_attribute: [ lrms_server, public_address, 0 ] }
       requirements:
         - host: lrms_wn

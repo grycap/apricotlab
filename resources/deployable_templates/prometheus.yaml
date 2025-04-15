@@ -6,7 +6,7 @@ imports:
 description: Deploy Prometheus + Grafana on top of a Kubernetes Virtual Cluster.
 
 metadata:
-  template_version: '1.1.0'
+  template_version: "1.1.0"
   template_name: Prometheus
   display_name: Deploy Prometheus + Grafana  on top of a Kubernetes Virtual Cluster
   icon: images/prometheus.png
@@ -14,21 +14,25 @@ metadata:
     Grafana Data: .*
   parents:
     - kubernetes.yaml
+    - oscar.yaml
 
 topology_template:
   inputs:
+
     admin_password:
       type: string
       description: Password of the Grafana admin user (user admin)
       default: adminpass
 
+
   node_templates:
+
     prometheus:
       type: tosca.nodes.indigo.Helm.Chart
       properties:
         namespace: prometheus
         repository_name: prometheus-community
-        repository_url: 'https://prometheus-community.github.io/helm-charts'
+        repository_url: "https://prometheus-community.github.io/helm-charts"
         name: kube-prometheus-stack
         values_file: |
           grafana:
@@ -57,8 +61,4 @@ topology_template:
 
   outputs:
     grafana_endpoint:
-      value:
-        {
-          concat:
-            ['https://', get_attribute: [front, public_address, 0], '/grafana/']
-        }
+      value: { concat: [ 'https://', get_attribute: [ front, public_address, 0 ], '/grafana/' ] }

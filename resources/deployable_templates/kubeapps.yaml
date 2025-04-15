@@ -6,7 +6,7 @@ imports:
 description: Deploy Kubeapps on top of a Kubernetes Virtual Cluster.
 
 metadata:
-  template_version: '1.0.0'
+  template_version: "1.0.0"
   template_name: Kubeapps
   display_name: Deploy Kubeapps on top of a Kubernetes Virtual Cluster
   icon: images/kubeapps-logo.png
@@ -14,16 +14,18 @@ metadata:
     - kubernetes.yaml
 
 topology_template:
+
   node_templates:
+
     kubeapps:
       type: tosca.nodes.indigo.Helm.Chart
       properties:
         namespace: kubeapps
         repository_name: bitnami
-        repository_url: 'https://charts.bitnami.com/bitnami'
+        repository_url: "https://charts.bitnami.com/bitnami"
         name: kubeapps
         values:
-          ingress.enabled: 'false'
+          ingress.enabled: "false"
       requirements:
         - host: front
         - dependency: lrms_front_end
@@ -62,12 +64,4 @@ topology_template:
 
   outputs:
     kubeapps_endpoint:
-      value:
-        {
-          concat:
-            [
-              'https://',
-              get_attribute: [front, public_address, 0],
-              '/kubeapps/'
-            ]
-        }
+      value: { concat: [ 'https://', get_attribute: [ front, public_address, 0 ], '/kubeapps/' ] }

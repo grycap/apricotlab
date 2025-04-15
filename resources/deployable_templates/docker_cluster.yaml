@@ -7,7 +7,7 @@ description: >
   Deploy a set of computing nodes with Docker and Docker Compose installed.
 
 metadata:
-  template_version: '1.0.0'
+  template_version: "1.0.0"
   template_name: Docker + Compose
   display_name: Install Docker + Docker Compose
   icon: images/docker.png
@@ -17,20 +17,23 @@ metadata:
     - slurm_cluster.yml
 
 topology_template:
+
   inputs:
+
     nvidia_support:
       type: boolean
       description: Flag to add the NVIDIA drivers and NVIDIA-Docker packages in the Worker nodes
       default: false
       constraints:
-        - valid_values: [false, true]
+        - valid_values: [ false, true ]
 
     driver_version:
       type: string
       description: NVIDIA Driver version to install in the Worker nodes
-      default: '510'
+      default: "510"
 
   node_templates:
+
     docker_fe:
       type: tosca.nodes.SoftwareComponent
       requirements:
@@ -45,10 +48,10 @@ topology_template:
             implementation: https://raw.githubusercontent.com/grycap/tosca/main/artifacts/docker.yml
             inputs:
               docker_nvidia_support: false
-              docker_nvidia_driver_version: '510'
-              docker_compose_git: ''
-              compose_folder: 'master'
-              repo_branch: ''
+              docker_nvidia_driver_version: "510"
+              docker_compose_git: ""
+              compose_folder: "master"
+              repo_branch: ""
 
     docker_wn:
       type: tosca.nodes.SoftwareComponent
@@ -65,6 +68,6 @@ topology_template:
             inputs:
               docker_nvidia_support: { get_input: nvidia_support }
               docker_nvidia_driver_version: { get_input: driver_version }
-              docker_compose_git: ''
-              compose_folder: 'master'
-              repo_branch: ''
+              docker_compose_git: ""
+              compose_folder: "master"
+              repo_branch: ""

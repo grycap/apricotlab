@@ -6,25 +6,30 @@ imports:
 description: Deploy MinIO server.
 
 metadata:
-  template_version: '1.0.0'
+  template_version: "1.0.0"
   template_name: MinIO
   display_name: Deploy MinIO server
   icon: images/minio.png
   tabs:
     MinIO Data:
       - minio_release
-      - minio_accesskey
-      - minio_secretkey
+      - minio_accesskey:
+          tag_type: password
+      - minio_secretkey:
+          tag_type: password
       - minio_dns_console
-      - nsupdate_secret_console
+      - nsupdate_secret_console:
+          tag_type: password
       - minio_dns_api
-      - nsupdate_secret_api
+      - nsupdate_secret_api:
+          tag_type: password
       - minio_letsencrypt_email
   parents:
     - simple-node-disk.yml
 
 topology_template:
   inputs:
+
     minio_release:
       default: RELEASE.2023-07-21T21-12-44Z
       description: Check out https://github.com/minio/minio/tags
@@ -65,27 +70,48 @@ topology_template:
     storage_size:
       type: scalar-unit.size
       description: Size of the extra HD added to the instance
-      default: 50 GB
+      default: 50 GiB
       constraints:
-        - valid_values:
-            [
-              50 GB,
-              100 GB,
-              200 GB,
-              500 GB,
-              1 TB,
-              2 TB,
-              10 TB,
-              20 TB,
-              40 TB,
-              100 TB
-            ]
+        - valid_values: [ 50 GiB, 100 GiB, 200 GiB, 500 GiB, 1 TiB, 2 TiB, 10 TiB, 20 TiB, 40 TiB, 100 TiB ]
     mount_path:
       type: string
       description: Path to mount the extra disk
       default: /data
 
   node_templates:
+
+    nsupdate_minio_api:
+      type: tosca.nodes.ec3.Application
+      interfaces:
+        Standard:
+          configure:
+            implementation: https://raw.githubusercontent.com/grycap/tosca/main/artifacts/dydns_egi_update.yml
+            inputs:
+              dydns_hostname:
+                get_input: minio_dns_api
+              dydns_secret:
+                get_input: nsupdate_secret_api
+              new_ip:
+                get_attribute: [ simple_node, public_address, 0 ]
+      requirements:
+        - host: simple_node
+
+    nsupdate_minio_console:
+      type: tosca.nodes.ec3.Application
+      interfaces:
+        Standard:
+          configure:
+            implementation: https://raw.githubusercontent.com/grycap/tosca/main/artifacts/dydns_egi_update.yml
+            inputs:
+              dydns_hostname:
+                get_input: minio_dns_console
+              dydns_secret:
+                get_input: nsupdate_secret_console
+              new_ip:
+                get_attribute: [ simple_node, public_address, 0 ]
+      requirements:
+        - host: simple_node
+
     minio:
       type: tosca.nodes.ec3.Application
       artifacts:
@@ -127,41 +153,11 @@ topology_template:
                 get_input: minio_release
       requirements:
         - host: simple_node
-
-    nsupdate_minio_api:
-      type: tosca.nodes.ec3.Application
-      interfaces:
-        Standard:
-          configure:
-            implementation: https://raw.githubusercontent.com/grycap/tosca/main/artifacts/dydns_egi_update.yml
-            inputs:
-              dydns_hostname:
-                get_input: minio_dns_api
-              dydns_secret:
-                get_input: nsupdate_secret_api
-              new_ip:
-                get_attribute: [simple_node, public_address, 0]
-      requirements:
-        - host: simple_node
-
-    nsupdate_minio_console:
-      type: tosca.nodes.ec3.Application
-      interfaces:
-        Standard:
-          configure:
-            implementation: https://raw.githubusercontent.com/grycap/tosca/main/artifacts/dydns_egi_update.yml
-            inputs:
-              dydns_hostname:
-                get_input: minio_dns_console
-              dydns_secret:
-                get_input: nsupdate_secret_console
-              new_ip:
-                get_attribute: [simple_node, public_address, 0]
-      requirements:
-        - host: simple_node
+        - dependency: nsupdate_minio_console
+        - dependency: nsupdate_minio_api
 
   outputs:
     minio_console:
-      value: { concat: ['https://', get_input: [minio_dns_console], '/'] }
+      value: { concat: [ 'https://', get_input: [ minio_dns_console ], '/' ] }
     minio_api:
-      value: { concat: ['https://', get_input: [minio_dns_api], '/'] }
+      value: { concat: [ 'https://', get_input: [ minio_dns_api ], '/' ] }

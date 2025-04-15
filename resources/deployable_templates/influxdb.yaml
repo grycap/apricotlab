@@ -6,7 +6,7 @@ imports:
 description: Deploy an InfluxDB on top of a Kubernetes Virtual Cluster.
 
 metadata:
-  template_version: '1.0.0'
+  template_version: "1.0.0"
   template_name: InfluxDB
   display_name: Deploy an InfluxDB on top of a Kubernetes Virtual Cluster
   icon: images/k8s_influxdb.png
@@ -17,6 +17,7 @@ metadata:
 
 topology_template:
   inputs:
+
     org_name:
       type: string
       description: Name of organization
@@ -45,23 +46,24 @@ topology_template:
       default: grafanapass
 
   node_templates:
+
     grafana-secret:
       type: tosca.nodes.indigo.KubernetesObject
       properties:
         spec:
           concat:
             - |-
-              apiVersion: v1
-              kind: Secret
-              metadata:
-                name: grafana-secrets
-                namespace: ai-sprint-mon
-              stringData:
-                admin-user: grafana
-                admin-password: "
+                apiVersion: v1
+                kind: Secret
+                metadata:
+                  name: grafana-secrets
+                  namespace: ai-sprint-mon
+                stringData:
+                  admin-user: grafana
+                  admin-password: "
             - get_input: grafana_password
             - |-
-              "
+                "
       requirements:
         - host: lrms_front_end
         - dependency: influxdb
@@ -71,7 +73,7 @@ topology_template:
       properties:
         namespace: ai-sprint-mon
         repository_name: grafana
-        repository_url: 'https://grafana.github.io/helm-charts'
+        repository_url: "https://grafana.github.io/helm-charts"
         name: grafana
         values_file: |
           resources:
@@ -107,24 +109,24 @@ topology_template:
         spec:
           concat:
             - |-
-              apiVersion: v1
-              kind: Secret
-              metadata:
-                name: telegraf-creds
-                namespace: ai-sprint-mon
-              stringData:
-                INFLUXDB_TOKEN: "
+                apiVersion: v1
+                kind: Secret
+                metadata:
+                  name: telegraf-creds
+                  namespace: ai-sprint-mon
+                stringData:
+                  INFLUXDB_TOKEN: "
             - get_input: admin_token
             - |-
-              "
-                INFLUXDB_BUCKET: "
+                "
+                  INFLUXDB_BUCKET: "
             - get_input: bucket_name
             - |-
-              "
-                INFLUXDB_ORG: "
+                "
+                  INFLUXDB_ORG: "
             - get_input: org_name
             - |-
-              "
+                "
       requirements:
         - host: lrms_front_end
         - dependency: influxdb
@@ -134,7 +136,7 @@ topology_template:
       properties:
         namespace: ai-sprint-mon
         repository_name: influxdata
-        repository_url: 'https://helm.influxdata.com/'
+        repository_url: "https://helm.influxdata.com/"
         name: telegraf-ds
         values_file: |
           env:
@@ -195,7 +197,7 @@ topology_template:
       properties:
         namespace: ai-sprint-mon
         repository_name: bitnami
-        repository_url: 'https://charts.bitnami.com/bitnami'
+        repository_url: "https://charts.bitnami.com/bitnami"
         name: influxdb
         values:
           auth.admin.username: { get_input: admin_username }
@@ -203,18 +205,13 @@ topology_template:
           auth.admin.token: { get_input: admin_token }
           auth.admin.org: { get_input: org_name }
           auth.admin.bucket: { get_input: bucket_name }
-          influxdb.service.nodePorts.http: '8086'
+          influxdb.service.nodePorts.http: "8086"
       requirements:
         - host: front
         - dependency: lrms_front_end
 
   outputs:
     influxdb_endpoint:
-      value:
-        { concat: ['https://', get_attribute: [front, public_address, 0], '/'] }
+      value: { concat: [ 'https://', get_attribute: [ front, public_address, 0 ], '/' ] }
     grafana_endpoint:
-      value:
-        {
-          concat:
-            ['https://', get_attribute: [front, public_address, 0], '/grafana/']
-        }
+      value: { concat: [ 'https://', get_attribute: [ front, public_address, 0 ], '/grafana/' ] }
