@@ -17,15 +17,23 @@ export async function executeKernelCommand(command: string): Promise<string> {
   const kernelInstance = await getOrStartKernel();
   const future = kernelInstance.requestExecute({ code: command });
 
+  let outputText = '';
+  let timeout: NodeJS.Timeout;
+
   return new Promise((resolve, reject) => {
+    // Listen for output
     future.onIOPub = (msg: { content: any }) => {
       const content = msg.content;
-      const outputText =
+      const currentOutput =
         content.text || (content.data && content.data['text/plain']);
 
-      // Resolve the promise with the output text if it exists
-      if (outputText) {
-        resolve(outputText.trim());
+      // If there is output, accumulate it
+      if (currentOutput) {
+        outputText += currentOutput;
+        clearTimeout(timeout); // Reset timeout if data comes in early
+        timeout = setTimeout(() => {
+          resolve(outputText.trim()); // Resolve after a delay to ensure all data is received
+        }, 500); // 500ms delay before resolving
       }
     };
 
