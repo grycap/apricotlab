@@ -261,7 +261,8 @@ async function createImagesDropdown(
 
   // Find the first occurrence of '[' and get the substring from there
   const jsonStartIndex = output.indexOf('[');
-  if (jsonStartIndex === -1) {
+  const jsonEndIndex = output.lastIndexOf(']') + 1;
+  if (jsonStartIndex === -1 || jsonEndIndex === -1) {
     console.error(
       'No OS images found. Check provider credentials or valid access token.'
     );
@@ -484,7 +485,7 @@ async function selectImage(obj: IDeployInfo): Promise<string> {
   } else if (obj.deploymentType === 'OpenStack') {
     authContent += `username = ${obj.username}; password = ${obj.password}; tenant = ${obj.tenant}; auth_version = ${obj.authVersion}; domain = ${obj.domain}`;
   } else if (obj.deploymentType === 'EGI') {
-    authContent += ` vo = ${obj.vo}; token = ${obj.accessToken}`;
+    authContent += ` vo = ${obj.vo}`;
   }
 
   const cmd = `%%bash
