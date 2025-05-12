@@ -794,7 +794,6 @@ const deployProviderCredentials = async (
 
     case 'OpenNebula':
     case 'OpenStack':
-
       text = `<p>Introduce ${deployInfo.deploymentType === 'OpenNebula' ? 'ONE' : 'OST'} credentials.</p><br>`;
       addFormInput(form, 'Username:', 'username', deployInfo.username);
       addFormInput(
@@ -815,25 +814,14 @@ const deployProviderCredentials = async (
           deployInfo.authVersion
         );
       }
-      addFormInput(
-        form,
-        'Access token:',
-        'access_token',
-        ''
-      );
+      addFormInput(form, 'Access token:', 'access_token', '');
       break;
 
     case 'EGI':
-
       text = '<p>Introduce EGI credentials.</p><br>';
       addFormInput(form, 'VO:', 'vo', deployInfo.vo);
       addFormInput(form, 'Site name:', 'site', deployInfo.host);
-      addFormInput(
-        form,
-        'Access token:',
-        'access_token',
-        ''
-      );
+      addFormInput(form, 'Access token:', 'access_token', '');
       break;
   }
 
