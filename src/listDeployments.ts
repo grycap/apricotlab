@@ -153,33 +153,33 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
 
   const kernel = await getOrStartKernel();
 
-    try {
-      // Read infrastructuresList.json
-      const cmdReadJson = `%%bash
+  try {
+    // Read infrastructuresList.json
+    const cmdReadJson = `%%bash
                           cat "${infrastructuresListPath}"`;
-      const futureReadJson = kernel.requestExecute({ code: cmdReadJson });
+    const futureReadJson = kernel.requestExecute({ code: cmdReadJson });
 
-      futureReadJson.onIOPub = (msg: any) => {
-        const content = msg.content as any;
-        if (content && content.text) {
-          jsonData = (jsonData || '') + content.text;
-        }
-      };
-
-      await futureReadJson.done;
-
-      if (!jsonData) {
-        throw new Error('infrastructuresList.json does not exist in the path.');
+    futureReadJson.onIOPub = (msg: any) => {
+      const content = msg.content as any;
+      if (content && content.text) {
+        jsonData = (jsonData || '') + content.text;
       }
-    } catch (error) {
-      console.error('Error reading or parsing infrastructuresList.json:', error);
-      Notification.error(
-        'Error reading or parsing infrastructuresList.json. Check the console for more details.',
-        {
-          autoClose: 5000
-        }
-      );
+    };
+
+    await futureReadJson.done;
+
+    if (!jsonData) {
+      throw new Error('infrastructuresList.json does not exist in the path.');
     }
+  } catch (error) {
+    console.error('Error reading or parsing infrastructuresList.json:', error);
+    Notification.error(
+      'Error reading or parsing infrastructuresList.json. Check the console for more details.',
+      {
+        autoClose: 5000
+      }
+    );
+  }
 
   // Parse the JSON data
   let infrastructures: IInfrastructure[] = [];
