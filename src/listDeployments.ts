@@ -5,7 +5,8 @@ import {
   getIMClientPath,
   createButton,
   getAuthFilePath,
-  executeKernelCommand
+  executeKernelCommand,
+  getOrStartKernel
 } from './utils';
 
 interface IInfrastructure {
@@ -148,28 +149,37 @@ async function deleteButton(
 async function populateTable(table: HTMLTableElement): Promise<void> {
   let jsonData: string | null = null;
   const infrastructuresListPath = await getInfrastructuresListPath();
+  console.log('infrastructuresListPath:', infrastructuresListPath);
 
-  try {
-    // Safely load JSON using Python
-    const cmdReadJson = `
-  import json
-  with open("${infrastructuresListPath}", "r") as f:
-      print(json.dumps(json.load(f)))
-    `;
-    jsonData = await executeKernelCommand(cmdReadJson);
+  const kernel = await getOrStartKernel();
 
-    if (!jsonData) {
-      throw new Error('infrastructuresList.json does not exist in the path.');
-    }
-  } catch (error) {
-    console.error('Error reading or parsing infrastructuresList.json:', error);
-    Notification.error(
-      'Error reading or parsing infrastructuresList.json. Check the console for more details.',
-      {
-        autoClose: 5000
+    try {
+      // Read infrastructuresList.json
+      const cmdReadJson = `%%bash
+                          cat "${infrastructuresListPath}"`;
+      const futureReadJson = kernel.requestExecute({ code: cmdReadJson });
+
+      futureReadJson.onIOPub = (msg: any) => {
+        const content = msg.content as any;
+        if (content && content.text) {
+          jsonData = (jsonData || '') + content.text;
+        }
+      };
+
+      await futureReadJson.done;
+
+      if (!jsonData) {
+        throw new Error('infrastructuresList.json does not exist in the path.');
       }
-    );
-  }
+    } catch (error) {
+      console.error('Error reading or parsing infrastructuresList.json:', error);
+      Notification.error(
+        'Error reading or parsing infrastructuresList.json. Check the console for more details.',
+        {
+          autoClose: 5000
+        }
+      );
+    }
 
   // Parse the JSON data
   let infrastructures: IInfrastructure[] = [];
