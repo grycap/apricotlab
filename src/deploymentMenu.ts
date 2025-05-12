@@ -506,35 +506,6 @@ async function selectImage(obj: IDeployInfo): Promise<string> {
   return cmd;
 }
 
-const getAccessToken = async (): Promise<string> => {
-  try {
-    const authFilePath = await getAuthFilePath();
-
-    const code = `%%bash
-      if [ -f ${authFilePath} ]; then
-        token=$(grep -oP 'token\\s*=\\s*\\K[^;]+' ${authFilePath})  # Extract the token
-        if [ -z "$token" ]; then
-          echo "NO_TOKEN"
-        else
-          echo "$token"
-        fi
-      else
-        echo "Auth file does not exist at: ${authFilePath}"
-        echo "NO_TOKEN"
-      fi
-    `;
-
-    const outputText = await executeKernelCommand(code);
-
-    const token = outputText.trim();
-
-    return token === 'NO_TOKEN' ? '' : token;
-  } catch (error) {
-    console.log('Error getting access token from authfile:', error);
-    throw error;
-  }
-};
-
 async function deployIMCommand(
   obj: IDeployInfo,
   mergedTemplate: string
@@ -823,12 +794,6 @@ const deployProviderCredentials = async (
 
     case 'OpenNebula':
     case 'OpenStack':
-      // Get the access token to fill the form
-      await getAccessToken().then(token => {
-        const tokenStr = String(token);
-        deployInfo.accessToken = tokenStr;
-      });
-
       text = `<p>Introduce ${deployInfo.deploymentType === 'OpenNebula' ? 'ONE' : 'OST'} credentials.</p><br>`;
       addFormInput(form, 'Username:', 'username', deployInfo.username);
       addFormInput(
@@ -849,29 +814,14 @@ const deployProviderCredentials = async (
           deployInfo.authVersion
         );
       }
-      addFormInput(
-        form,
-        'Access token:',
-        'access_token',
-        deployInfo.accessToken
-      );
+      addFormInput(form, 'Access token:', 'access_token', '');
       break;
 
     case 'EGI':
-      await getAccessToken().then(token => {
-        const tokenStr = String(token);
-        deployInfo.accessToken = tokenStr;
-      });
-
       text = '<p>Introduce EGI credentials.</p><br>';
       addFormInput(form, 'VO:', 'vo', deployInfo.vo);
       addFormInput(form, 'Site name:', 'site', deployInfo.host);
-      addFormInput(
-        form,
-        'Access token:',
-        'access_token',
-        deployInfo.accessToken
-      );
+      addFormInput(form, 'Access token:', 'access_token', '');
       break;
   }
 
