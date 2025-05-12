@@ -2,120 +2,160 @@
 
 [![Github Actions Status](https://github.com/grycap/apricotlab/workflows/Build/badge.svg)](https://github.com/grycap/apricotlab/actions/workflows/build.yml)
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/grycap/apricotlab/main?urlpath=lab)
-Advanced Platform for Reproducible Infrastructure in the Cloud via Open Tools for JupyterLab.
 
-## Introduction
+**APRICOTLab**: Advanced Platform for Reproducible Infrastructure in the Cloud via Open Tools for JupyterLab.
 
-APRICOT is an open-source extension to support customised virtual infrastructure deployment and usage from Jupyter notebooks. It allows multi-cloud infrastructure provisioning using a wizard-like GUI that guides the user step by step through the deployment process. It implements IPython magic functionality to use and manage the deployed infrastructures within Jupyter notebooks for increased usability.
+---
 
-## Experiment replication methodology
+## 🌟 Introduction
 
-APRICOT can be used to achieve reproducible experiments for experiments that require complex customised computing infrastructures using Jupyter notebooks. The key points to develop reproducible experiments using APRICOT extensions are:
+**APRICOTLab** is an open-source JupyterLab extension that enables users to deploy, manage, and interact with multi-cloud infrastructures using a step-by-step graphical wizard and built-in IPython magics. It empowers reproducible research and experimentation in cloud-based environments using the familiar interface of Jupyter notebooks.
 
-- APRICOT provides a set of predefined configurable infrastructures to fit the experiments. Any researcher can easily deploy the same computing infrastructure than the one used in a previous experimentation carried out with the deployed infrastructure in APRICOT.
+## 🔍 Features
 
-- APRICOT allows remote execution of commands at the deployed infrastructures to ease interaction. So, extra needed software can be documented and installed at the infrastructure within the same Jupyter notebook where the experimentation has been documented in order to be executed step by step.
+- Deploy cloud infrastructures using a visual wizard or programmatically
 
-- Since APRICOT extension uses Jupyter notebooks as base environment, all the experiment can be documented using text, life code and images.
+- Support for multiple cloud providers like EGI, OpenStack or EC2
 
-## Requirements
+- Customizable infrastructure templates
 
-APRICOT requires the Infrastructure Manager client to deploy the infrastructure and get the access credentials. The installation details can be found at [IM documentation](https://imdocs.readthedocs.io/en/devel/gstarted.html).
+- Integrated IPython magic commands for managing and interact with infrastructures directly from notebooks
 
-Also, APRICOT requires a [Jupyter installation](https://jupyter.org/install), since uses its environment to run. It is compatible with JupyterLab >= 4.0.0.
+- Seamless command execution, file upload/download, and monitoring
 
-### Components
+- Create reproducible computational experiments
 
-APRICOT has been constructed using the following components:
+## 🧬 Experiment Replication Methodology
 
-- [**Jupyter**](https://jupyter.org/), an open-source web application that allows you to create and share documents that contain live code, equations, visualizations and narrative text.
-- [**IM**](https://www.grycap.upv.es/im/index.php), an open-source virtual infrastructure provisioning tool for multi-Clouds.
+**APRICOTLab** enables reproducible experiments that require complex infrastructure by:
 
-## Infrastructure management
+- Providing a set of predefined, configurable infrastructures that can be redeployed by other researchers using the same configuration.
 
-To manage and use previous deployed infrastructures within Jupyter notebook environment, a set of Ipython magic functions have been implemented. These functions are listed below:
+- Allowing command execution on deployed infrastructures directly from the notebook, making it easy to document and install additional software during an experiment.
 
-- Magic lines:
-  - **apricot_log**:
-    - Arguments: infrastructure identifier
-    - Returns: the configuration logs of specified infrastructure
-  - **apricot_ls**: takes no arguments and returns a list with all the deployed infrastructures using this extension.
-  - **apricot_info**:
-    - Arguments: infrastructure identifier
-    - Returns: the specifications of specified infrastructure
-  - **apricot_vmls**:
-    - Arguments: infrastructure identifier.
-    - Return: a list of working nodes and their status at the specified infrastructure.
-  - **apricot_upload**: upload specified local files into the specified infrastructure destination path.
-    - Arguments: infrastructure identifier, upload file paths, destination path.
-  - **apricot_download**: download files located at specified infrastructure to local storage.
-    - Arguments: infrastructure identifier, download file paths, local destination path.
-- Magic line and cell:
-  - **apricot**: Perform multiple tasks depending on input command.
-    - exec: takes as arguments a infrastructure identifier and an OS command to be executed in the specified infrastructure.
-    - list: same as _apricot_ls_.
-    - destroy: take a infrastructure identifier as argument and destroys the infrastructure.
+- Leveraging the Jupyter environment for full documentation of experiments with text, live code, and visual outputs.
 
-Like any Jupyter magics, these must be lodaded at the notebook using _%reload_ext apricot_magics_ or configure Jupyter to load these magics in all notebooks.
+## ⚙️ Requirements
 
-## Docker
+A [Jupyter](https://jupyter.org/install) environment (compatible with JupyterLab ≥ 4.0.0).
 
-A Dockerfile has been provided to construct a docker image with Jupyter and APRICOT configured. Use
+The [Infrastructure Manager (IM)](https://imdocs.readthedocs.io/en/devel/gstarted.html) client must be installed and configured, an open-source virtual infrastructure provisioning tool for multi-Clouds.
 
-`docker build -t apricotlab .`
+## ✨ IPython Magics for Infrastructure Management
 
-to build the image. Then, use
+The extension provides a set of custom IPython magic commands for interacting with deployed infrastructures:
 
-`docker run --publish 8888:8888 apricotlab`
+To use the magics, load them in your notebook:
 
-to create and execute a container. The container will start automatically a Jupyter server with APRICOT preconfigured. Then, use the url provided by Jupyter to access to the server.
+```python
+%reload_ext apricot_magics
+```
 
-## Development install
+You can also configure Jupyter to load them automatically.
 
-Note: You will need NodeJS to build the extension package.
+### Line magics
 
-The `jlpm` command is JupyterLab's pinned version of
-[yarn](https://yarnpkg.com/) that is installed with JupyterLab. You may use
-`yarn` or `npm` in lieu of `jlpm` below.
+- `%apricot_token [refresh_token]`:
+  Generates a new access token using the provided `refresh_token`.
+  If no `refresh_token` is supplied, a previously saved token will be used instead.
+
+- `%apricot_ls`:
+  Lists all deployed infrastructures.
+
+- `%apricot_log <infra_id>`:
+  Shows the deployment logs of the specified infrastructure.
+
+- `%apricot_info <infra_id>`:
+  Returns the specifications of the given infrastructure.
+
+<!-- - `%apricot_vmls <infra_id>`:
+Lists the virtual machines and their status of a given infrastructure. -->
+
+- `%apricot_upload <infra_id> <local_paths> <dest_path>`:
+  Uploads local files to the specified infrastructure.
+
+- `%apricot_download <infra_id> <remote_paths> <local_dest>`:
+  Downloads files from the infrastructure to the local system.
+
+- `destroy <infra_id>`:
+  Destroys the specified infrastructure.
+
+### Line and cell magic
+
+- `%%apricot` (or `%apricot`):
+  Supports subcommands such as:
+
+- `exec <infra_id> <command>`: Executes a shell command in the specified infrastructure.
+
+- `list`: Alias for `%apricot_ls`.
+
+- `destroy <infra_id>`: Destroys the specified infrastructure.
+
+## 🐳 Docker
+
+A `Dockerfile` is provided for easy setup:
 
 ```bash
-# Clone the repo to your local environment
-# Change directory to the apricot directory
-# Install package in development mode
-pip install -e "."
-# Link your development version of the extension with JupyterLab
+docker build -t apricotlab .
+docker run --publish 8888:8888 apricotlab
+```
+
+This will launch a JupyterLab instance with APRICOT pre-installed.
+
+## 🛠 Development Installation
+
+> Note: Node.js is required for building the extension.
+> Note: The `jlpm` command is JupyterLab's pinned version of [yarn](https://yarnpkg.com/) that is installed with JupyterLab.
+
+```bash
+# Clone the repository
+git clone https://github.com/grycap/apricotlab.git
+cd apricotlab
+
+# Install the Python package in development mode
+pip install -e .
+
+# Link the extension to JupyterLab
 jupyter labextension develop . --overwrite
-# Rebuild extension Typescript source after making changes
+
+# Build the extension
 jlpm build
 ```
 
-You can watch the source directory and run JupyterLab at the same time in different terminals to watch for changes in the extension's source and automatically rebuild the extension.
+You can run the extension in watch mode:
 
 ```bash
-# Watch the source directory in one terminal, automatically rebuilding when needed
+# Terminal 1: Watch the source directory, automatically rebuilding when needed
 jlpm watch
-# Run JupyterLab in another terminal
+
+# Terminal 2: Run JupyterLab
 jupyter lab
 ```
 
-With the watch command running, every saved change will immediately be built locally and available in your running JupyterLab. Refresh JupyterLab to load the change in your browser (you may need to wait several seconds for the extension to be rebuilt).
-
-By default, the `jlpm build` command generates the source maps for this extension to make it easier to debug using the browser dev tools. To also generate source maps for the JupyterLab core extensions, you can run the following command:
+To ensure source maps for easier debugging:
 
 ```bash
 jupyter lab build --minimize=False
 ```
 
-## Development uninstall
+## 🧹 Uninstall (Development)
 
 ```bash
 pip uninstall apricot
 ```
 
-In development mode, you will also need to remove the symlink created by `jupyter labextension develop`
-command. To find its location, you can run `jupyter labextension list` to figure out where the `labextensions`
-folder is located. Then you can remove the symlink named `apricot` within that folder.
+You should also remove the symlink created with `jupyter labextension develop`. Run:
 
-## Packaging the extension
+```bash
+jupyter labextension list
+```
 
-See [RELEASE](RELEASE.md)
+...to find the `labextensions` folder and manually remove the `apricot` symlink.
+
+## 📦 Packaging the Extension
+
+For packaging and releasing, see [RELEASE.md](RELEASE.md).
+
+## 🛡️ License
+
+Distributed under the BSD 3-Clause License.
