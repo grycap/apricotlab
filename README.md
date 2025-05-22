@@ -3,6 +3,8 @@
 [![Github Actions Status](https://github.com/grycap/apricotlab/workflows/Build/badge.svg)](https://github.com/grycap/apricotlab/actions/workflows/build.yml)
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/grycap/apricotlab/main?urlpath=lab)
 
+![title](style/logo.png)
+
 **APRICOTLab**: Advanced Platform for Reproducible Infrastructure in the Cloud via Open Tools for JupyterLab.
 
 ---
