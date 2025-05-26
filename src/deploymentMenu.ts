@@ -53,17 +53,19 @@ interface ITemplateInput {
 }
 
 type UserInput = {
-  name: string;
-  inputs: {
-    [key: string]: {
-      description: string;
-      default: any;
-      value: any;
+    name: string;
+    type: string;
+    inputs: {
+        [key: string]: {
+            type: string;
+            description: string;
+            default: any;
+            value: any;
+        };
     };
-  };
-  nodeTemplates: any;
-  outputs: any;
-};
+    nodeTemplates: any;
+    outputs: any;
+}
 
 interface IInfrastructureData {
   // IMuser: string;
@@ -301,75 +303,79 @@ async function createImagesDropdown(
   }
 }
 
-async function mergeTOSCARecipes(
+export async function mergeTOSCARecipes(
   parsedConstantTemplate: any,
   userInputs: UserInput[] | undefined,
   nodeTemplates: any[] | undefined,
   outputs: any[] | undefined
 ): Promise<any> {
   try {
-    // Clone the parsed constant template to avoid mutating the original
+    // Deep clone to avoid mutating original
     const mergedTemplate = JSON.parse(JSON.stringify(parsedConstantTemplate));
 
-    // Process user inputs if defined and not empty
+    // Ensure topology_template exists
+    if (!mergedTemplate.topology_template) {
+      mergedTemplate.topology_template = {};
+    }
+
+    // Initialize required sections if missing
+    for (const key of ['inputs', 'node_templates', 'outputs']) {
+      if (!mergedTemplate.topology_template[key]) {
+        mergedTemplate.topology_template[key] = {};
+      }
+    }
+
+    // Handle user inputs
     if (userInputs && userInputs.length > 0) {
       const populatedTemplates = await Promise.all(userInputs);
 
-      // Ensure populatedTemplates is not undefined
-      if (populatedTemplates) {
-        populatedTemplates.forEach(template => {
-          if (template && template.inputs) {
-            Object.entries(template.inputs).forEach(([inputName, input]) => {
-              if (typeof input === 'object' && input !== null) {
-                const inputValue = (input as ITemplateInput).value;
+      for (const template of populatedTemplates) {
+        if (template && template.inputs) {
+          for (const [inputName, input] of Object.entries(template.inputs)) {
+            if (typeof input === 'object' && input !== null) {
+              const inputTyped = input as ITemplateInput;
 
-                // Merge or add inputs in the constant template
-                if (inputName in mergedTemplate.topology_template.inputs) {
-                  mergedTemplate.topology_template.inputs[inputName].default =
-                    inputValue;
-                } else {
-                  mergedTemplate.topology_template.inputs = {
-                    ...mergedTemplate.topology_template.inputs,
-                    [inputName]: {
-                      type: 'string',
-                      description: inputName,
-                      default: inputValue
-                    }
-                  };
-                }
-              }
-            });
-          }
-
-          // Merge node templates
-          if (template.nodeTemplates) {
-            Object.entries(template.nodeTemplates).forEach(
-              ([nodeTemplateName, nodeTemplate]) => {
-                mergedTemplate.topology_template.node_templates = {
-                  ...mergedTemplate.topology_template.node_templates,
-                  [nodeTemplateName]: nodeTemplate
+              // If input already exists, update only the default value
+              if (inputName in mergedTemplate.topology_template.inputs) {
+                mergedTemplate.topology_template.inputs[inputName].default =
+                  inputTyped.value;
+              } else {
+                // Else, add with guessed or fallback values
+                mergedTemplate.topology_template.inputs[inputName] = {
+                  type: inputTyped.type,
+                  description: inputTyped.description || inputName,
+                  default: inputTyped.value
                 };
               }
-            );
+            }
           }
+        }
 
-          // Merge outputs
-          if (template.outputs) {
-            Object.entries(template.outputs).forEach(([outputName, output]) => {
-              mergedTemplate.topology_template.outputs = {
-                ...mergedTemplate.topology_template.outputs,
-                [outputName]: output
-              };
-            });
-          }
-        });
+        // Merge node_templates
+        if (template.nodeTemplates) {
+          Object.entries(template.nodeTemplates).forEach(
+            ([nodeTemplateName, nodeTemplate]) => {
+              mergedTemplate.topology_template.node_templates[nodeTemplateName] =
+                nodeTemplate;
+            }
+          );
+        }
+
+        // Merge outputs
+        if (template.outputs) {
+          Object.entries(template.outputs).forEach(([outputName, output]) => {
+            mergedTemplate.topology_template.outputs[outputName] = output;
+          });
+        }
+
+        
       }
     }
 
     return mergedTemplate;
   } catch (error) {
     console.error('Error merging TOSCA recipes:', error);
-    return JSON.parse(JSON.stringify(parsedConstantTemplate));
+    return JSON.parse(JSON.stringify(parsedConstantTemplate)); // fallback to original
   }
 }
 
@@ -1093,24 +1099,35 @@ const deployChildsConfiguration = async (
           if (recipeInputs) {
             // Create an object to hold input structure and values
             const inputsWithValues: {
-              [key: string]: {
-                description: string;
-                default: any;
-                value: any;
-              };
-            } = {};
+            [key: string]: {
+              type: string;
+              description: string;
+              default: any;
+              value: any;
+            };
+          } = {};
 
             Object.entries(recipeInputs).forEach(([inputName, input]) => {
               const defaultValue = (input as any).default || '';
               const inputElement = form.querySelector<HTMLInputElement>(
                 `[name="${inputName}"]`
               );
-              const userInput = inputElement ? inputElement.value : ''; // Handle null case
+              const type = (input as any).type;
+              let userInput: any = inputElement ? inputElement.value : '';
+
+              if (type === 'integer' || type === 'float') {
+                userInput = Number(userInput);
+              } else if (type === 'boolean') {
+                userInput = userInput === 'true' || userInput === 'on';
+              }
+
               inputsWithValues[inputName] = {
+                type: type,
                 description: (input as any).description,
                 default: defaultValue,
                 value: userInput
               };
+
             });
 
             // Return the outputs to create final recipe to deploy
