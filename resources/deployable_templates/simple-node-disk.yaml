@@ -48,6 +48,8 @@ metadata:
     - dydns_egi_update_vm.yml
     - flowfuse.yaml
     - stac_vm.yaml
+    - ollama.yaml
+    - juno_compose.yaml
 
 topology_template:
 
