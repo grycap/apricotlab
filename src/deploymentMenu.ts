@@ -145,6 +145,28 @@ const providers = {
   EC2: { id: 'ec2', deploymentType: 'EC2' }
 };
 
+const excludedKeys = new Set([
+  'instance_type',
+  'swap_size',
+  'storage_size',
+  'mount_path',
+  'gpu_vendor',
+  'gpu_model',
+  'ports',
+  'fe_instance_type',
+  'fe_disk_size',
+  'fe_volume_id',
+  'fe_kube_nvidia_support',
+  'fe_mount_path',
+  'fe_ports',
+  'wn_gpu_vendor',
+  'wn_gpu_model',
+  'wn_instance_type',
+  'wn_disk_size',
+  'wn_kube_nvidia_support',
+  'wn_mount_path'
+]);
+
 let imageOptions: { uri: string; name: string }[] = [];
 
 let deploying = false; // Flag to prevent multiple deployments at the same time
@@ -191,20 +213,26 @@ const addFormInput = (
   inputId: string,
   value: string = '',
   type: string = 'text',
-  defaultValue?: string
-): void => {
+  defaultValue?: string,
+  name?: string,
+  placeholder?: string
+): HTMLInputElement => {
   const label = document.createElement('label');
   label.textContent = labelText;
+  label.htmlFor = inputId;
   form.appendChild(label);
 
   const input = document.createElement('input');
   input.type = type;
   input.id = inputId;
-  input.value = value;
+  input.name = name || inputId;  // fallback to id
+  input.value = value || defaultValue || '';
+  if (placeholder) input.placeholder = placeholder;
   input.classList.add('jp-InputArea-editor', 'cm-editor');
 
   form.appendChild(input);
-  form.appendChild(document.createElement('br'));
+
+  return input;
 };
 
 function getInputValue(inputId: string): string {
@@ -972,26 +1000,17 @@ async function deployInfraConfiguration(dialogBody: HTMLElement): Promise<void> 
   const form = document.createElement('form');
   dialogBody.appendChild(form);
 
-  // Infrastructure Name input (added back)
-  const infNameLabel = document.createElement('label');
-  infNameLabel.textContent = 'Infrastructure Name';
-  infNameLabel.htmlFor = 'infNameInput';
-  form.appendChild(infNameLabel);
+    const introParagraph = document.createElement('p');
+    introParagraph.textContent = 'Introduce front-end and worker VM specifications.';
+    form.appendChild(introParagraph);
 
-  const infNameInput = document.createElement('input');
-  infNameInput.type = 'text';
-  infNameInput.name = 'infNameInput';
-  infNameInput.id = 'infNameInput';
-  infNameInput.placeholder = 'Enter infrastructure name';
-  if (deployInfo.infName) {
-    infNameInput.value = deployInfo.infName;
-  }
-  form.appendChild(infNameInput);
-
-  // Intro paragraph
-  const introParagraph = document.createElement('p');
-  introParagraph.textContent = 'Introduce worker VM specifications.';
-  form.appendChild(introParagraph);
+  addFormInput(
+    form,
+    'Infrastructure name',
+    'infNameInput',
+    deployInfo.infName || '',
+    'text'
+  );
 
   const templatesPath = await getDeployableTemplatesPath();
   const contentsManager = new ContentsManager();
@@ -1004,13 +1023,14 @@ async function deployInfraConfiguration(dialogBody: HTMLElement): Promise<void> 
   const inputs = yamlData?.topology_template?.inputs;
 
   if (inputs) {
-    Object.entries(inputs)
-      .filter(([key, _]) => {
-        // Exclude inputs that contain "ports" anywhere in the name
-        if (key.includes('ports')) return false;
-        if (deployInfo.recipe === 'simple node disk') return true;
-        return key.startsWith('fe_') || key.startsWith('wn_');
-      })
+  Object.entries(inputs)
+    .filter(([key, _]) => {
+      if (excludedKeys.has(key)) return false;
+
+      // If recipe is 'simple node disk' include all inputs, if not, only include those starting with 'fe_' or 'wn_'
+      if (deployInfo.recipe === 'simple node disk') return true;
+      return key.startsWith('fe_') || key.startsWith('wn_');
+    })
       .forEach(([key, inputDef]) => {
         const description = (inputDef as any).description || key;
         const constraints = (inputDef as any).constraints;
@@ -1076,17 +1096,11 @@ async function deployInfraConfiguration(dialogBody: HTMLElement): Promise<void> 
       : 'Next',
     async () => {
       try {
-        // Save infrastructure name input value to deployInfo.infName
-        const infNameInputElem = form.querySelector<HTMLInputElement>('#infNameInput');
-        if (infNameInputElem) {
-          const infNameVal = infNameInputElem.value.trim();
-          if (infNameVal === '') {
-            console.warn('🔴 Infrastructure name is empty.');
-            // You might want to alert the user here or prevent continuing
-          }
-          deployInfo.infName = infNameVal;
-          console.log(`✅ Infrastructure name set: ${deployInfo.infName}`);
-        }
+        // Save infrastructure name from input
+const infNameElement = form.querySelector<HTMLInputElement>('#infNameInput');
+if (infNameElement) {
+  deployInfo.infName = infNameElement.value.trim();
+}   
 
         const imageDropdown = document.getElementById('imageDropdown') as HTMLSelectElement;
         if (imageDropdown) {
@@ -1219,7 +1233,6 @@ const deployChildsConfiguration = async (
 
           const recipeFileName = getMainRecipeFileName(childName);
           const file = await contentsManager.get(`${templatesPath}/${recipeFileName}`);
-
           const yamlContent = file.content as string;
           const yamlData: any = jsyaml.load(yamlContent);
           const recipeInputs = yamlData.topology_template.inputs;
@@ -1228,39 +1241,47 @@ const deployChildsConfiguration = async (
             const inputsWithValues: Record<string, any> = {};
 
             Object.entries(recipeInputs).forEach(([inputName, input]) => {
-              let userInput: any;
-
+              const inputDef = structuredClone(input as any); // Start with a copy of the original input
               const inputElement = form.querySelector<HTMLInputElement | HTMLSelectElement>(
                 `[name="${CSS.escape(inputName)}"]`
               );
 
-              const type = (input as any).type;
+              const type = inputDef.type;
 
               if (inputElement) {
                 if (type === 'boolean') {
-                  userInput = (inputElement as HTMLInputElement).checked;
+                  if (inputElement instanceof HTMLInputElement) {
+                    inputDef.default = inputElement.checked;
+                    inputDef.value = inputElement.checked;
+                  } else {
+                    console.warn(`⚠️ Expected checkbox input for "${inputName}", but got something else.`);
+                  }
                 } else {
                   const rawValue = inputElement.value.trim();
-                  if (type === 'integer') {
-                    userInput = parseInt(rawValue, 10);
-                  } else if (type === 'float') {
-                    userInput = parseFloat(rawValue);
+                  if (rawValue !== '') {
+                    let parsedValue: any;
+                    if (type === 'integer') {
+                      parsedValue = parseInt(rawValue, 10);
+                    } else if (type === 'float') {
+                      parsedValue = parseFloat(rawValue);
+                    } else {
+                      parsedValue = rawValue;
+                    }
+
+                    inputDef.default = parsedValue;
+                    inputDef.value = parsedValue;
                   } else {
-                    userInput = rawValue;
+                    console.info(`ℹ️ Input "${inputName}" left blank — keeping original default.`);
                   }
                 }
-              } else if (deployInfo.inputs && inputName in deployInfo.inputs) {
-                console.warn(`⚠️ Input field for "${inputName}" not found in form, using deployInfo.inputs fallback.`);
-                userInput = deployInfo.inputs[inputName];
-              } else {
-                console.warn(`⚠️ Input field for "${inputName}" not found in form and no fallback value available.`);
-                userInput = (input as any).default || '';
               }
-
-              // ✅ Clone original input and mutate only `default` and add `value`
-              const inputDef = structuredClone(input as any);
-              inputDef.default = userInput;
-              inputDef.value = userInput;
+ else if (deployInfo.inputs && inputName in deployInfo.inputs) {
+                console.warn(`⚠️ Input "${inputName}" not found in form — using fallback from deployInfo.inputs.`);
+                inputDef.default = deployInfo.inputs[inputName];
+                inputDef.value = deployInfo.inputs[inputName];
+              } else {
+                console.info(`ℹ️ No user input or fallback for "${inputName}" — keeping original definition untouched.`);
+              }
 
               inputsWithValues[inputName] = inputDef;
             });
@@ -1292,7 +1313,6 @@ const deployChildsConfiguration = async (
   buttonContainer.appendChild(nextButton);
   dialogBody.appendChild(buttonContainer);
 };
-
 
 async function deployFinalRecipe(
   dialogBody: HTMLElement,
