@@ -13,8 +13,6 @@ import {
 } from './utils';
 
 interface IDeployInfo {
-  // IMuser: string;
-  // IMpass: string;
   accessToken: any;
   recipe: string;
   id: string;
@@ -28,17 +26,21 @@ interface IDeployInfo {
   domain: string;
   vo: string;
   custom: string;
-  worker: {
-    num_instances: number;
-    num_cpus: number;
-    mem_size: string;
-    disk_size: string;
-    num_gpus: number;
-    image: string;
-    [key: string]: number | string;
+
+  inputs: {
+    [key: string]: string; // All parsed fe_* and wn_* values
   };
+
+  worker: {
+    image: string;
+    inputs: {
+      [key: string]: string | number; // Only wn_* values needed for the deployment
+    };
+  };
+
   childs: string[];
 }
+
 
 interface IRecipe {
   name: string;
@@ -86,8 +88,6 @@ interface IInfrastructureData {
 }
 
 const deployInfo: IDeployInfo = {
-  // IMuser: '',
-  // IMpass: '',
   accessToken: '',
   recipe: '',
   id: '',
@@ -101,14 +101,14 @@ const deployInfo: IDeployInfo = {
   domain: '',
   vo: '',
   custom: 'false',
+
+  inputs: {},  // <--- NEW: holds all fe_* and wn_* key-value pairs
+
   worker: {
-    num_instances: 1,
-    num_cpus: 1,
-    mem_size: '2 GB',
-    disk_size: '20 GB',
-    num_gpus: 1,
-    image: ''
+    image: '',
+    inputs: {}  // <--- NEW: holds just wn_* values for deployment
   },
+
   childs: []
 };
 
@@ -119,16 +119,15 @@ const recipes: IRecipe[] = [
   },
   {
     name: 'Slurm',
-    childs: ['slurm_cluster', 'slurm_elastic', 'slurm_galaxy', 'docker_cluster']
+    childs: ['slurm_elastic', 'slurm_galaxy', 'docker_cluster']
   },
   {
     name: 'Kubernetes',
     childs: [
-      'kubernetes',
       'kubeapps',
       'prometheus',
       'minio_compose',
-      'noderedvm',
+      'nodered',
       'influxdb',
       'argo'
     ]
@@ -150,7 +149,8 @@ let imageOptions: { uri: string; name: string }[] = [];
 
 let deploying = false; // Flag to prevent multiple deployments at the same time
 
-const imEndpoint = 'https://deploy.sandbox.eosc-beyond.eu';
+// const imEndpoint = 'https://deploy.sandbox.eosc-beyond.eu';
+const imEndpoint = 'https://im.egi.eu/im';
 
 //*****************//
 //* Aux functions *//
@@ -212,13 +212,13 @@ function getInputValue(inputId: string): string {
   return input.value;
 }
 
-async function computeHash(input: string): Promise<string> {
-  const msgUint8 = new TextEncoder().encode(input);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  return hashHex;
-}
+// async function computeHash(input: string): Promise<string> {
+//   const msgUint8 = new TextEncoder().encode(input);
+//   const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+//   const hashArray = Array.from(new Uint8Array(hashBuffer));
+//   const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+//   return hashHex;
+// }
 
 // async function generateIMCredentials(): Promise<void> {
 //   const randomInput = `${Date.now()}-${Math.random()}`;
@@ -337,15 +337,14 @@ export async function mergeTOSCARecipes(
 
               // If input already exists, update only the default value
               if (inputName in mergedTemplate.topology_template.inputs) {
-                mergedTemplate.topology_template.inputs[inputName].default =
-                  inputTyped.value;
-              } else {
-                // Else, add with guessed or fallback values
+                // 🔧 Preserve original input structure, only update 'default'
                 mergedTemplate.topology_template.inputs[inputName] = {
-                  type: inputTyped.type,
-                  description: inputTyped.description || inputName,
-                  default: inputTyped.value
+                  ...mergedTemplate.topology_template.inputs[inputName],
+                  default: inputTyped.default
                 };
+              } else {
+                // If it's a new input, add it as-is
+                mergedTemplate.topology_template.inputs[inputName] = input;
               }
             }
           }
@@ -367,33 +366,49 @@ export async function mergeTOSCARecipes(
             mergedTemplate.topology_template.outputs[outputName] = output;
           });
         }
+      }
+    }
 
-        
+    // === Inject image field into os.properties of each node template ===
+    // Assumes deployInfo.worker.image is accessible globally
+    if (typeof deployInfo !== 'undefined' && deployInfo.worker?.image) {
+      const imageValue = deployInfo.worker.image;
+  console.log('Injecting image into node_templates:', imageValue);
+
+      const nodeTemplates = mergedTemplate.topology_template.node_templates;
+      for (const nodeTemplate of Object.values(nodeTemplates) as any[]) {
+        if (
+          nodeTemplate.capabilities &&                          // Check if capabilities exist
+          nodeTemplate.capabilities.os &&                       // Check if os capability exists
+          nodeTemplate.capabilities.os.properties &&            // Check if os.properties exists
+          typeof nodeTemplate.capabilities.os.properties === 'object'
+        ) {
+          nodeTemplate.capabilities.os.properties.image = imageValue;
+        }
       }
     }
 
     return mergedTemplate;
   } catch (error) {
     console.error('Error merging TOSCA recipes:', error);
-    return JSON.parse(JSON.stringify(parsedConstantTemplate)); // fallback to original
+    return JSON.parse(JSON.stringify(parsedConstantTemplate)); // Fallback to original
   }
 }
 
+
 async function createChildsForm(
-  app: string,
+  childName: string,
   index: number,
   deployDialog: HTMLElement,
   buttonsContainer: HTMLElement
 ) {
+
   const templatesPath = await getDeployableTemplatesPath();
   const contentsManager = new ContentsManager();
 
-  // Load YAML content
-  const file = await contentsManager.get(
-    `${templatesPath}/${app.toLowerCase()}.yaml`
-  );
+  const recipeFileName = getMainRecipeFileName(childName);
+  const file = await contentsManager.get(`${templatesPath}/${recipeFileName}`);
 
-  // Parse YAML content
   const yamlContent = file.content as string;
   const yamlData: any = jsyaml.load(yamlContent);
   const metadata = yamlData.metadata;
@@ -402,16 +417,15 @@ async function createChildsForm(
   const nodeTemplates = yamlData.topology_template.node_templates;
   const outputs = yamlData.topology_template.outputs;
 
-  // Create child button
+  // Create button for each child
   const appButton = document.createElement('button');
   appButton.className = 'jp-Button child-buttons';
   appButton.textContent = templateName;
 
-  // Show form for the selected child when clicked
   appButton.addEventListener('click', event => {
     event.preventDefault();
     Array.from(deployDialog.querySelectorAll('form')).forEach(form => {
-      form.style.display = 'none'; // Hide all forms except the first one
+      form.style.display = 'none';
     });
     form.style.display = 'block';
   });
@@ -420,40 +434,64 @@ async function createChildsForm(
 
   // Create form
   const form = document.createElement('form');
-  form.id = `form-${app.toLowerCase()}`;
+  form.id = `form-${index}`;
+  form.setAttribute('data-childname', childName);
   deployDialog.appendChild(form);
 
-  // Show the form for the first child by default
   if (index !== 0) {
     form.style.display = 'none';
   }
 
-  // Create input fields from YAML content
   if (inputs) {
-    Object.entries(inputs).forEach(([key, input]) => {
-      const description = (input as any).description;
+  Object.entries(inputs)
+    .filter(([key, _]) => !key.startsWith('fe_') && !key.startsWith('wn_'))
+    .forEach(([key, input]) => {
+      const description = (input as any).description || key;
       const constraints = (input as any).constraints;
+      const type = (input as any).type;
+      const defaultValue = (input as any).default;
 
-      const inputField = document.createElement(
-        constraints && constraints.length > 0 && constraints[0].valid_values
-          ? 'select'
-          : 'input'
-      );
-      inputField.id = key;
-      inputField.name = key;
+      let inputField: HTMLInputElement | HTMLSelectElement;
 
       if (
         constraints &&
         constraints.length > 0 &&
         constraints[0].valid_values
       ) {
-        const validValues = constraints[0].valid_values;
-        validValues.forEach((value: string) => {
+        inputField = document.createElement('select');
+        inputField.name = key;
+
+        constraints[0].valid_values.forEach((value: string) => {
           const option = document.createElement('option');
           option.value = value;
           option.textContent = value;
+          if (value === defaultValue) {
+            option.selected = true;
+            inputField.value = defaultValue; // ✅ force value for <select>
+          }
           inputField.appendChild(option);
         });
+      } else {
+        inputField = document.createElement('input');
+        inputField.name = key;
+
+        if (type === 'integer' || type === 'float') {
+          inputField.type = 'number';
+          if (defaultValue !== undefined) {
+            inputField.value = defaultValue;
+            inputField.placeholder = String(defaultValue);
+          }
+        } else if (type === 'boolean') {
+          inputField.type = 'checkbox';
+          (inputField as HTMLInputElement).checked =
+            defaultValue === true || defaultValue === 'true';
+        } else {
+          inputField.type = 'text';
+          if (defaultValue !== undefined) {
+            inputField.value = defaultValue;
+            inputField.placeholder = String(defaultValue);
+          }
+        }
       }
 
       const label = document.createElement('label');
@@ -463,9 +501,9 @@ async function createChildsForm(
       form.appendChild(label);
       form.appendChild(inputField);
     });
-  } else {
-    form.innerHTML = '<p>No inputs to be filled.</p><br>';
-  }
+} else {
+  form.innerHTML = '<p>No inputs to be filled.</p><br>';
+}
 
   return {
     form,
@@ -473,6 +511,22 @@ async function createChildsForm(
     outputs
   };
 }
+
+function getMainRecipeFileName(recipeName: string): string {
+  const normalized = recipeName.trim().toLowerCase();
+
+  const mainRecipeMap: Record<string, string> = {
+    'simple node disk': 'simple-node-disk.yaml',
+    'slurm': 'slurm_cluster.yaml',
+    'kubernetes': 'kubernetes.yaml'
+  };
+
+  return mainRecipeMap[normalized] ??
+    normalized.replace(/\s+/g, '_') + '.yaml';
+}
+
+const footerButtonContainer = document.createElement('div');
+footerButtonContainer.className = 'footer-button-container';
 
 //*********************//
 //*   Bash commands   *//
@@ -582,17 +636,17 @@ const deployRecipeType = (dialogBody: HTMLElement): void => {
   paragraph.textContent = 'Select recipe type:';
   dialogBody.appendChild(paragraph);
 
+  // Create recipe buttons
   recipes.forEach(recipe => {
-    // Create buttons for each recipe type
     const button = createButton(recipe.name, async () => {
-      // Remove all children except buttons
+      // Remove everything except recipe buttons
       Array.from(dialogBody.children).forEach(child => {
-        if (!child.classList.contains('recipe-button')) {
+        if (!child.classList.contains('recipe-button') && child !== footerButtonContainer) {
           dialogBody.removeChild(child);
         }
       });
 
-      deployInfo.recipe = recipe.name;
+      deployInfo.recipe = recipe.name.trim().toLowerCase();
 
       if (recipe.name === 'Custom recipe') {
         customRecipe(dialogBody);
@@ -604,11 +658,15 @@ const deployRecipeType = (dialogBody: HTMLElement): void => {
     dialogBody.appendChild(button);
   });
 
-  const buttonContainer = document.createElement('div');
-  buttonContainer.classList.add('footer-button-container');
+  // Append the shared footer container if not already in DOM
+  if (!dialogBody.contains(footerButtonContainer)) {
+    dialogBody.appendChild(footerButtonContainer);
+  }
 
-  dialogBody.appendChild(buttonContainer);
+  // Clear existing buttons and add nothing here for now
+  footerButtonContainer.innerHTML = '';
 };
+
 
 const createCheckboxesForChilds = async (
   dialogBody: HTMLElement,
@@ -629,9 +687,8 @@ const createCheckboxesForChilds = async (
   const contentsManager = new ContentsManager();
   const promises = childs.map(async child => {
     // Load YAML file asynchronously
-    const file = await contentsManager.get(
-      `${templatesPath}/${child.toLowerCase()}.yaml`
-    );
+    const recipeFileName = getMainRecipeFileName(child);
+    const file = await contentsManager.get(`${templatesPath}/${recipeFileName}`);
     const yamlContent = file.content as string;
 
     // Parse YAML content
@@ -645,22 +702,13 @@ const createCheckboxesForChilds = async (
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.id = `${child}-checkID`;
-    checkbox.name = child;
+    checkbox.name = child.toLowerCase();
     checkbox.value = templateName;
 
     // Create label for checkbox
     const label = document.createElement('label');
-    label.htmlFor = child;
+    label.htmlFor = `${child.toLowerCase()}-checkID`;
     label.textContent = ` ${templateName}`;
-
-    // Check if recipe is Slurm or Kubernetes
-    if (
-      (deployInfo.recipe === 'Slurm' && child === 'slurm_cluster') ||
-      (deployInfo.recipe === 'Kubernetes' && child === 'kubernetes')
-    ) {
-      checkbox.checked = true; // Check the checkbox
-      checkbox.disabled = true; // Disable the checkbox
-    }
 
     // Append checkbox and label to list item
     li.appendChild(checkbox);
@@ -677,15 +725,24 @@ const createCheckboxesForChilds = async (
   buttonContainer.className = 'footer-button-container';
 
   const nextButton = createButton('Next', () => {
-    // Populate deployInfo.childs
+    // Collect selected checkboxes
     const selectedChilds = Array.from(
       dialogBody.querySelectorAll('input[type="checkbox"]:checked')
     ).map((checkbox: Element) => (checkbox as HTMLInputElement).name);
-    deployInfo.childs = selectedChilds;
+
+    // Always include slurm and kubernetes if main recipe is one of them
+    const mainRecipe = deployInfo.recipe.toLowerCase();
+    const alwaysInclude = ['slurm', 'kubernetes'];
+    if (alwaysInclude.includes(mainRecipe)) {
+      selectedChilds.push(mainRecipe);
+    }
+
+    // Remove duplicates
+    deployInfo.childs = Array.from(new Set(selectedChilds));
+
     deployChooseProvider(dialogBody);
   });
   buttonContainer.appendChild(nextButton);
-
   dialogBody.appendChild(buttonContainer);
 };
 
@@ -834,8 +891,7 @@ const deployProviderCredentials = async (
 
   form.insertAdjacentHTML('afterbegin', text);
 
-  const buttonContainer = document.createElement('div');
-  buttonContainer.className = 'footer-button-container';
+  footerButtonContainer.innerHTML = '';
 
   const backBtn = createButton('Back', () => {
     deployChooseProvider(dialogBody);
@@ -848,11 +904,11 @@ const deployProviderCredentials = async (
     deployInfo.vo = '';
     deployInfo.accessToken = '';
   });
-  const nextButton = createButton('Next', async () => {
-    const form = dialogBody.querySelector('form'); // Get the form element
-    const inputs = form?.querySelectorAll('input'); // Get all input fields in the form
 
-    // Loop through each input and check if it is empty
+  const nextButton = createButton('Next', async () => {
+    const form = dialogBody.querySelector('form');
+    const inputs = form?.querySelectorAll('input');
+
     let allFieldsFilled = true;
     inputs?.forEach(input => {
       if (!input.value) {
@@ -860,7 +916,6 @@ const deployProviderCredentials = async (
       }
     });
 
-    // Trigger error if any field is empty
     if (!allFieldsFilled) {
       Notification.error(
         'Please fill in all required fields before continuing.',
@@ -902,62 +957,110 @@ const deployProviderCredentials = async (
 
     deployInfraConfiguration(dialogBody);
   });
-  buttonContainer.appendChild(backBtn);
-  buttonContainer.appendChild(nextButton);
 
-  dialogBody.appendChild(buttonContainer);
+  footerButtonContainer.appendChild(backBtn);
+  footerButtonContainer.appendChild(nextButton);
+
+  // ✅ Only append it if not already attached
+  if (!dialogBody.contains(footerButtonContainer)) {
+    dialogBody.appendChild(footerButtonContainer);
+  }
 };
 
-async function deployInfraConfiguration(
-  dialogBody: HTMLElement
-): Promise<void> {
+async function deployInfraConfiguration(dialogBody: HTMLElement): Promise<void> {
   dialogBody.innerHTML = '';
   const form = document.createElement('form');
   dialogBody.appendChild(form);
 
+  // Infrastructure Name input (added back)
+  const infNameLabel = document.createElement('label');
+  infNameLabel.textContent = 'Infrastructure Name';
+  infNameLabel.htmlFor = 'infNameInput';
+  form.appendChild(infNameLabel);
+
+  const infNameInput = document.createElement('input');
+  infNameInput.type = 'text';
+  infNameInput.name = 'infNameInput';
+  infNameInput.id = 'infNameInput';
+  infNameInput.placeholder = 'Enter infrastructure name';
+  if (deployInfo.infName) {
+    infNameInput.value = deployInfo.infName;
+  }
+  form.appendChild(infNameInput);
+
+  // Intro paragraph
   const introParagraph = document.createElement('p');
   introParagraph.textContent = 'Introduce worker VM specifications.';
   form.appendChild(introParagraph);
 
-  addFormInput(
-    form,
-    'Infrastructure name:',
-    'infrastructureName',
-    deployInfo.infName
-  );
-  addFormInput(
-    form,
-    'Number of VMs:',
-    'infrastructureWorkers',
-    '1',
-    'number',
-    '1'
-  );
-  addFormInput(
-    form,
-    'Number of CPUs for each VM:',
-    'infrastructureCPUs',
-    '1',
-    'number',
-    '1'
-  );
-  addFormInput(form, 'Memory for each VM:', 'infrastructureMem', '2 GB');
-  addFormInput(
-    form,
-    'Size of the root disk of the VM(s):',
-    'infrastructureDiskSize',
-    '20 GB'
-  );
-  addFormInput(
-    form,
-    'Number of GPUs for each VM:',
-    'infrastructureGPUs',
-    '1',
-    'number',
-    '1'
-  );
+  const templatesPath = await getDeployableTemplatesPath();
+  const contentsManager = new ContentsManager();
 
-  // Create a button container to hold Back and Next/Deploy buttons
+  const recipeFileName = getMainRecipeFileName(deployInfo.recipe);
+  const file = await contentsManager.get(`${templatesPath}/${recipeFileName}`);
+  const yamlContent = file.content as string;
+  const yamlData: any = jsyaml.load(yamlContent);
+
+  const inputs = yamlData?.topology_template?.inputs;
+
+  if (inputs) {
+    Object.entries(inputs)
+      .filter(([key, _]) => {
+        // Exclude inputs that contain "ports" anywhere in the name
+        if (key.includes('ports')) return false;
+        if (deployInfo.recipe === 'simple node disk') return true;
+        return key.startsWith('fe_') || key.startsWith('wn_');
+      })
+      .forEach(([key, inputDef]) => {
+        const description = (inputDef as any).description || key;
+        const constraints = (inputDef as any).constraints;
+        const defaultValue = (inputDef as any).default;
+
+        let inputField: HTMLInputElement | HTMLSelectElement;
+
+        if (
+          constraints &&
+          constraints.length > 0 &&
+          constraints[0].valid_values
+        ) {
+          // Dropdown/select
+          inputField = document.createElement('select');
+          inputField.name = key;
+
+          constraints[0].valid_values.forEach((value: string) => {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = value;
+            if (value === defaultValue) {
+              option.selected = true;
+            }
+            inputField.appendChild(option);
+          });
+        } else {
+          // Plain text input
+          inputField = document.createElement('input');
+          inputField.type = 'text';
+          inputField.name = key;
+          inputField.placeholder = description;
+
+          if (defaultValue !== undefined && defaultValue !== null) {
+            inputField.value = defaultValue;
+          }
+        }
+
+        const label = document.createElement('label');
+        label.textContent = description;
+        label.htmlFor = inputField.name;
+        form.appendChild(label);
+        form.appendChild(inputField);
+      });
+  } else {
+    const noInputsMessage = document.createElement('p');
+    noInputsMessage.textContent = 'No frontend or worker node inputs found.';
+    form.appendChild(noInputsMessage);
+  }
+
+  // Buttons container and buttons
   const buttonContainer = document.createElement('div');
   buttonContainer.className = 'footer-button-container';
   dialogBody.appendChild(buttonContainer);
@@ -968,34 +1071,66 @@ async function deployInfraConfiguration(
   buttonContainer.appendChild(backBtn);
 
   const nextBtn = createButton(
-    deployInfo.childs.length === 0 ? 'Deploy' : 'Next',
+    (deployInfo.recipe === 'simple node disk' && deployInfo.childs.length === 0)
+      ? 'Deploy'
+      : 'Next',
     async () => {
       try {
-        const imageDropdown = document.getElementById(
-          'imageDropdown'
-        ) as HTMLSelectElement;
+        // Save infrastructure name input value to deployInfo.infName
+        const infNameInputElem = form.querySelector<HTMLInputElement>('#infNameInput');
+        if (infNameInputElem) {
+          const infNameVal = infNameInputElem.value.trim();
+          if (infNameVal === '') {
+            console.warn('🔴 Infrastructure name is empty.');
+            // You might want to alert the user here or prevent continuing
+          }
+          deployInfo.infName = infNameVal;
+          console.log(`✅ Infrastructure name set: ${deployInfo.infName}`);
+        }
 
-        // Check if the dropdown exists
+        const imageDropdown = document.getElementById('imageDropdown') as HTMLSelectElement;
         if (imageDropdown) {
           deployInfo.worker.image = imageDropdown.value;
         }
 
-        // Retrieve and parse form input values
-        deployInfo.infName = getInputValue('infrastructureName');
-        deployInfo.worker.num_instances = parseInt(
-          getInputValue('infrastructureWorkers')
-        );
-        deployInfo.worker.num_cpus = parseInt(
-          getInputValue('infrastructureCPUs')
-        );
-        deployInfo.worker.mem_size = getInputValue('infrastructureMem');
-        deployInfo.worker.disk_size = getInputValue('infrastructureDiskSize');
-        deployInfo.worker.num_gpus = parseInt(
-          getInputValue('infrastructureGPUs')
-        );
+        const allInputs = form.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select');
+        allInputs.forEach(input => {
+          // Skip infrastructure name input as it's already handled
+          if (input.id === 'infNameInput') return;
 
-        // Check if we need to deploy final recipe or configure child components
-        if (deployInfo.childs.length === 0) {
+          const inputName = input.name;
+          const originalInputDef = inputs[inputName];
+          const type = originalInputDef?.type;
+
+          let value: any = input.value.trim();
+
+          if (value === '') {
+            console.warn(`🔴 Input '${inputName}' is empty and has no value.`);
+            return;
+          }
+
+          // Convert value to correct type
+          if (type === 'integer') {
+            value = parseInt(value, 10);
+          } else if (type === 'float') {
+            value = parseFloat(value);
+          }
+
+          // Update default in YAML input
+          originalInputDef.default = value;
+
+          // Store in deployInfo
+          deployInfo.inputs[inputName] = value;
+
+          console.log(`✅ Updated: '${inputName}' = ${value}`);
+        });
+
+        console.log('📦 All deployInfo.inputs:', deployInfo.inputs);
+
+        if (
+          deployInfo.recipe === 'simple node disk' &&
+          deployInfo.childs.length === 0
+        ) {
           await deployFinalRecipe(dialogBody);
         } else {
           await deployChildsConfiguration(dialogBody);
@@ -1004,9 +1139,7 @@ async function deployInfraConfiguration(
         console.error('Error in deployment process:', error);
         Notification.error(
           'Check for correct provider credentials before continuing.',
-          {
-            autoClose: 5000
-          }
+          { autoClose: 5000 }
         );
       }
     }
@@ -1017,29 +1150,22 @@ async function deployInfraConfiguration(
   }
   buttonContainer.appendChild(nextBtn);
 
-  // Create the dropdown container for non-EC2 types
+  // Image dropdown (non-EC2)
   if (deployInfo.deploymentType !== 'EC2') {
     const dropdownContainer = document.createElement('div');
     dropdownContainer.id = 'dropdownContainer';
 
-    // Add a mini loader to the dropdown container
     const loader = document.createElement('div');
     loader.className = 'mini-loader';
     dropdownContainer.appendChild(loader);
-
-    // Insert the dropdown container above the button container
     dialogBody.insertBefore(dropdownContainer, buttonContainer);
 
-    // Create select image command
     const cmdImageNames = await selectImage(deployInfo);
 
     try {
-      // Execute the deployment command
       const outputText = await executeKernelCommand(cmdImageNames);
-
-      dropdownContainer.removeChild(loader); // Remove the loader once done
-
-      await createImagesDropdown(outputText, dropdownContainer); // Pass the container to hold the dropdown
+      dropdownContainer.removeChild(loader);
+      await createImagesDropdown(outputText, dropdownContainer);
       if (dropdownContainer.querySelector('select') !== null) {
         nextBtn.disabled = false;
       }
@@ -1061,8 +1187,8 @@ const deployChildsConfiguration = async (
 
   // Create forms for child configurations
   const forms = await Promise.all(
-    childs.map((app, index) =>
-      createChildsForm(app, index, dialogBody, buttonsContainer)
+    childs.map((childName, index) =>
+      createChildsForm(childName, index, dialogBody, buttonsContainer)
     )
   );
 
@@ -1086,51 +1212,61 @@ const deployChildsConfiguration = async (
       await Promise.all(
         forms.map(async formData => {
           const form = formData.form;
-          const childName = form.id.replace('form-', '');
+          const childName = form.getAttribute('data-childname');
+          if (!childName) {
+            throw new Error('Missing data-childname attribute on form.');
+          }
 
-          // Fetch YAML content for the form
-          const file = await contentsManager.get(
-            `${templatesPath}/${childName}.yaml`
-          );
+          const recipeFileName = getMainRecipeFileName(childName);
+          const file = await contentsManager.get(`${templatesPath}/${recipeFileName}`);
+
           const yamlContent = file.content as string;
           const yamlData: any = jsyaml.load(yamlContent);
           const recipeInputs = yamlData.topology_template.inputs;
 
           if (recipeInputs) {
-            // Create an object to hold input structure and values
-            const inputsWithValues: {
-            [key: string]: {
-              type: string;
-              description: string;
-              default: any;
-              value: any;
-            };
-          } = {};
+            const inputsWithValues: Record<string, any> = {};
 
             Object.entries(recipeInputs).forEach(([inputName, input]) => {
-              const defaultValue = (input as any).default || '';
-              const inputElement = form.querySelector<HTMLInputElement>(
-                `[name="${inputName}"]`
-              );
-              const type = (input as any).type;
-              let userInput: any = inputElement ? inputElement.value : '';
+              let userInput: any;
 
-              if (type === 'integer' || type === 'float') {
-                userInput = Number(userInput);
-              } else if (type === 'boolean') {
-                userInput = userInput === 'true' || userInput === 'on';
+              const inputElement = form.querySelector<HTMLInputElement | HTMLSelectElement>(
+                `[name="${CSS.escape(inputName)}"]`
+              );
+
+              const type = (input as any).type;
+
+              if (inputElement) {
+                if (type === 'boolean') {
+                  userInput = (inputElement as HTMLInputElement).checked;
+                } else {
+                  const rawValue = inputElement.value.trim();
+                  if (type === 'integer') {
+                    userInput = parseInt(rawValue, 10);
+                  } else if (type === 'float') {
+                    userInput = parseFloat(rawValue);
+                  } else {
+                    userInput = rawValue;
+                  }
+                }
+              } else if (deployInfo.inputs && inputName in deployInfo.inputs) {
+                console.warn(`⚠️ Input field for "${inputName}" not found in form, using deployInfo.inputs fallback.`);
+                userInput = deployInfo.inputs[inputName];
+              } else {
+                console.warn(`⚠️ Input field for "${inputName}" not found in form and no fallback value available.`);
+                userInput = (input as any).default || '';
               }
 
-              inputsWithValues[inputName] = {
-                type: type,
-                description: (input as any).description,
-                default: defaultValue,
-                value: userInput
-              };
+              // ✅ Clone original input and mutate only `default` and add `value`
+              const inputDef = structuredClone(input as any);
+              inputDef.default = userInput;
+              inputDef.value = userInput;
 
+              inputsWithValues[inputName] = inputDef;
             });
 
-            // Return the outputs to create final recipe to deploy
+            console.log(`🧾 Inputs for ${childName}:`, inputsWithValues);
+
             return {
               name: childName,
               inputs: inputsWithValues,
@@ -1138,14 +1274,16 @@ const deployChildsConfiguration = async (
               outputs: formData.outputs
             };
           } else {
-            console.error(
-              `Error: recipeInputs is null or undefined for ${childName}.yaml`
-            );
+            console.error(`❌ recipeInputs is null or undefined for ${childName}.yaml`);
             return null;
           }
         })
       )
-    ).filter((input): input is UserInput => input !== null); // Filter out null values
+    ).filter((input): input is UserInput => input !== null);
+
+    console.log('📦 All user inputs collected:', userInputs);
+    console.log('🧩 All node templates collected:', nodeTemplates);
+    console.log('📤 All outputs collected:', outputs);
 
     deployFinalRecipe(dialogBody, userInputs, nodeTemplates, outputs);
   });
@@ -1154,6 +1292,7 @@ const deployChildsConfiguration = async (
   buttonContainer.appendChild(nextButton);
   dialogBody.appendChild(buttonContainer);
 };
+
 
 async function deployFinalRecipe(
   dialogBody: HTMLElement,
@@ -1172,26 +1311,26 @@ async function deployFinalRecipe(
   deploying = true;
 
   try {
+    const recipeFileName = getMainRecipeFileName(deployInfo.recipe);
+
     const templatesPath = await getDeployableTemplatesPath();
     const contentsManager = new ContentsManager();
-    const file = await contentsManager.get(
-      `${templatesPath}/simple-node-disk.yaml`
-    );
+    const file = await contentsManager.get(`${templatesPath}/${recipeFileName}`);
     const yamlContent = file.content;
     const parsedTemplate = jsyaml.load(yamlContent) as any;
 
     // Add infrastructure name and a hash to the metadata
-    const hash = await computeHash(JSON.stringify(deployInfo));
+    // const hash = await computeHash(JSON.stringify(deployInfo));
     parsedTemplate.metadata = parsedTemplate.metadata || {};
-    parsedTemplate.metadata.infra_name = `jupyter_${hash}`;
+    parsedTemplate.metadata.infra_name = deployInfo.infName;
 
     // Populate the template with worker values
     const workerInputs = parsedTemplate.topology_template.inputs;
-    Object.keys(deployInfo.worker).forEach(key => {
+    Object.entries(deployInfo.worker.inputs).forEach(([key, value]) => {
       workerInputs[key] = workerInputs[key] || {
-        type: typeof deployInfo.worker[key]
+        type: typeof value
       };
-      workerInputs[key].default = deployInfo.worker[key];
+      workerInputs[key].default = value;
     });
 
     // Merge templates
