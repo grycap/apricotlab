@@ -27,7 +27,7 @@ interface IInfrastructure {
   custom: string;
 }
 
-const imEndpoint = 'https://deploy.sandbox.eosc-beyond.eu';
+const imEndpoint = 'https://im.egi.eu/im';
 
 async function openListDeploymentsDialog(): Promise<void> {
   try {

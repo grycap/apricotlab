@@ -11,7 +11,7 @@ import os
 import json
 import sys
 
-IM_ENDPOINT = "https://deploy.sandbox.eosc-beyond.eu"
+IM_ENDPOINT = "https://im.egi.eu/im"
 
 
 @magics_class
@@ -213,7 +213,7 @@ class Apricot_Magics(Magics):
         try:
             self.initialize_im_client()
             success, inf_info = self.client.get_infra_property(inf_id, "outputs")
-            ip = inf_info.get("node_ip", "Pending")
+            ip = inf_info.get("node_ip")
 
         except Exception as e:
             print(f"Error: {e}")

@@ -39,6 +39,12 @@
   font-weight: 500;
 }
 
+.form-instructions {
+  margin-bottom: 12px;
+  font-size: 14px;
+  color: var(--jp-ui-font-color1);
+}
+
 /* Styles for the text area */
 .recipe-textarea {
   width: 40vw;
