@@ -1,69 +1,69 @@
 {
-    "@context": [
-        "https://doi.org/10.5063/schema/codemeta-2.0",
-        "http://schema.org"
-    ],
-    "@type": "SoftwareSourceCode",
-    "identifier": "apricotlab",
-    "name": "Apricotlab",
-    "version": "1.0.0",
-    "description": "Advanced Platform for Reproducible Infrastructure in the Cloud via Open Tools for JupyterLab.",
-    "license": "GNU General Public License v3.0",
-    "author": [
-        {
-            "@type": "Person",
-            "givenName": "Antonio",
-            "familyName": "Sánchez",
-            "email": "ansanco1@upv.es"
-        },
-        {
-            "@type": "Person",
-            "givenName": "Miguel",
-            "familyName": "Caballer",
-            "@id": "https://orcid.org/0000-0001-9393-3077",
-            "email": "micafer1@upv.es"
-        }
-    ],
-    "audience": [
-        {
-            "@type": "Audience",
-            "audienceType": "Developers"
-        },
-        {
-            "@type": "Audience",
-            "audienceType": "End Users/Desktop"
-        },
-        {
-            "@type": "Audience",
-            "audienceType": "Science/Research"
-        }
-    ],
-    "runtimePlatform": "JupyterLab",
-    "url": "https://github.com/grycap/apricotlab",
-    "keywords": "JupyterLab, Infrastructure-Management, TOSCA, Cloud-Computing, Reproducibility, Open-Source",
-    "developmentStatus": "5 - Production/Stable",
-    "programmingLanguage": "Python 3, Python 3.6, Python 3.7, Python 3.8, Python 3.9",
-    "applicationCategory": "System, Utilities",
-    "codeRepository": "https://github.com/grycap/apricotlab",
-    "copyrightHolder": "GRyCAP-UPV",
-    "copyrightYear": 2025,
-    "creator": [
-        {
-            "@type": "Person",
-            "givenName": "Antonio",
-            "familyName": "Sánchez",
-            "email": "ansanco1@upv.es"
-        }
-    ],
-    "dateCreated": "2024-05-03",
-    "affiliation": "UPV",
-    "maintainer": [
-        {
-            "@type": "Person",
-            "givenName": "Antonio",
-            "familyName": "Sánchez",
-            "email": "ansanco1@upv.es"
-        }
-    ],
-    "readme": "https://github.com/grycap/apricotlab/blob/main/README.md"
+  "@context": [
+    "https://doi.org/10.5063/schema/codemeta-2.0",
+    "http://schema.org"
+  ],
+  "@type": "SoftwareSourceCode",
+  "identifier": "apricotlab",
+  "name": "Apricotlab",
+  "version": "1.0.0",
+  "description": "Advanced Platform for Reproducible Infrastructure in the Cloud via Open Tools for JupyterLab.",
+  "license": "GNU General Public License v3.0",
+  "author": [
+    {
+      "@type": "Person",
+      "givenName": "Antonio",
+      "familyName": "Sánchez",
+      "email": "ansanco1@upv.es"
+    },
+    {
+      "@type": "Person",
+      "givenName": "Miguel",
+      "familyName": "Caballer",
+      "@id": "https://orcid.org/0000-0001-9393-3077",
+      "email": "micafer1@upv.es"
+    }
+  ],
+  "audience": [
+    {
+      "@type": "Audience",
+      "audienceType": "Developers"
+    },
+    {
+      "@type": "Audience",
+      "audienceType": "End Users/Desktop"
+    },
+    {
+      "@type": "Audience",
+      "audienceType": "Science/Research"
+    }
+  ],
+  "runtimePlatform": "JupyterLab",
+  "url": "https://github.com/grycap/apricotlab",
+  "keywords": "JupyterLab, Infrastructure-Management, TOSCA, Cloud-Computing, Reproducibility, Open-Source",
+  "developmentStatus": "5 - Production/Stable",
+  "programmingLanguage": "Python 3, Python 3.6, Python 3.7, Python 3.8, Python 3.9",
+  "applicationCategory": "System, Utilities",
+  "codeRepository": "https://github.com/grycap/apricotlab",
+  "copyrightHolder": "GRyCAP-UPV",
+  "copyrightYear": 2025,
+  "creator": [
+    {
+      "@type": "Person",
+      "givenName": "Antonio",
+      "familyName": "Sánchez",
+      "email": "ansanco1@upv.es"
+    }
+  ],
+  "dateCreated": "2024-05-03",
+  "affiliation": "UPV",
+  "maintainer": [
+    {
+      "@type": "Person",
+      "givenName": "Antonio",
+      "familyName": "Sánchez",
+      "email": "ansanco1@upv.es"
+    }
+  ],
+  "readme": "https://github.com/grycap/apricotlab/blob/main/README.md"
 }
