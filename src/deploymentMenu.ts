@@ -664,7 +664,7 @@ async function selectImage(obj: IDeployInfo): Promise<string> {
   } else if (obj.deploymentType === 'OpenStack') {
     authContent += `username = ${obj.username}; password = ${obj.password}; tenant = ${obj.tenant}; auth_version = ${obj.authVersion}; domain = ${obj.domain}`;
   } else if (obj.deploymentType === 'EGI') {
-    authContent += ` vo = ${obj.vo}`;
+    authContent += ` vo = ${obj.vo}; token = ${obj.accessToken}`;
   }
 
   const cmd = `%%bash
