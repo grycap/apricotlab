@@ -100,6 +100,10 @@ A `Dockerfile` is provided for easy setup:
 ```bash
 docker build -t apricotlab .
 docker run --publish 8888:8888 apricotlab
+
+# Or you can use the built image:
+
+docker run -p 8888:8888 ghcr.io/grycap/apricotlab:1.1.0
 ```
 
 This will launch a JupyterLab instance with APRICOT pre-installed.

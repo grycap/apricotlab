@@ -16,14 +16,14 @@ const plugin: JupyterFrontEndPlugin<void> = {
     'Advanced Platform for Reproducible Infrastructure in the Cloud via Open Tools.',
   autoStart: true,
   activate: (app: JupyterFrontEnd) => {
-    Notification.success('JupyterLab extension APRICOT is activated!', {
+    Notification.success('JupyterLab extension APRICOTLab is activated!', {
       autoClose: 5000
     });
 
     // Create the HTML content of the widget
     const node = document.createElement('div');
     node.className = 'apricot-top-area';
-    node.textContent = 'APRICOT';
+    node.textContent = 'APRICOTLab';
 
     // Create the widget
     const widget = new Widget({ node });
