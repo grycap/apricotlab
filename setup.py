@@ -5,7 +5,7 @@ setup(
     version='0.1.0',
     packages=find_packages(),  # Automatically find the `apricot_magics` package
     install_requires=[
-        'ipython',
+        'ipython>=8.0.0',
     ],
     entry_points={
         'ipython.plugins': [
