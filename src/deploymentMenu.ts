@@ -195,7 +195,7 @@ async function openDeploymentDialog(): Promise<void> {
   const dialog = new Dialog({
     title: 'Deploy Infrastructure',
     body: contentWidget,
-    buttons: []
+    buttons: [Dialog.cancelButton()]
   });
 
   // Prevent the use of the Enter button, except in text areas
@@ -664,7 +664,7 @@ async function selectImage(obj: IDeployInfo): Promise<string> {
   } else if (obj.deploymentType === 'OpenStack') {
     authContent += `username = ${obj.username}; password = ${obj.password}; tenant = ${obj.tenant}; auth_version = ${obj.authVersion}; domain = ${obj.domain}`;
   } else if (obj.deploymentType === 'EGI') {
-    authContent += ` vo = ${obj.vo}`;
+    authContent += ` vo = ${obj.vo}; token = ${obj.accessToken}`;
   }
 
   const cmd = `%%bash
@@ -1396,10 +1396,10 @@ const handleFinalDeployOutput = async (
 
     if (deployInfo.custom === 'true') {
       customRecipe(dialogBody);
+    } else if (deployInfo.childs.length === 0) {
+      deployInfraConfiguration(dialogBody);
     } else {
-      deployInfo.childs.length === 0
-        ? deployInfraConfiguration(dialogBody)
-        : deployChildsConfiguration(dialogBody);
+      deployChildsConfiguration(dialogBody);
     }
   } else {
     dialogBody.innerHTML = `
