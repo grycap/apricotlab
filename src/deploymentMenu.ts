@@ -195,7 +195,7 @@ async function openDeploymentDialog(): Promise<void> {
   const dialog = new Dialog({
     title: 'Deploy Infrastructure',
     body: contentWidget,
-    buttons: []
+    buttons: [Dialog.cancelButton()]
   });
 
   // Prevent the use of the Enter button, except in text areas
