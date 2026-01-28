@@ -6,9 +6,10 @@ import { openDeploymentDialog } from './deploymentMenu';
 import { openListDeploymentsDialog } from './listDeployments';
 import { treeViewIcon, listIcon } from '@jupyterlab/ui-components'; // kernelIcon
 
-export class ButtonExtension
-  implements DocumentRegistry.IWidgetExtension<NotebookPanel, INotebookModel>
-{
+export class ButtonExtension implements DocumentRegistry.IWidgetExtension<
+  NotebookPanel,
+  INotebookModel
+> {
   createNew(
     panel: NotebookPanel,
     context: DocumentRegistry.IContext<INotebookModel>

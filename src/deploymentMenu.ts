@@ -1396,10 +1396,10 @@ const handleFinalDeployOutput = async (
 
     if (deployInfo.custom === 'true') {
       customRecipe(dialogBody);
+    } else if (deployInfo.childs.length === 0) {
+      deployInfraConfiguration(dialogBody);
     } else {
-      deployInfo.childs.length === 0
-        ? deployInfraConfiguration(dialogBody)
-        : deployChildsConfiguration(dialogBody);
+      deployChildsConfiguration(dialogBody);
     }
   } else {
     dialogBody.innerHTML = `

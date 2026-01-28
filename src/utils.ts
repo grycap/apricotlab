@@ -18,7 +18,7 @@ export async function executeKernelCommand(command: string): Promise<string> {
   const future = kernelInstance.requestExecute({ code: command });
 
   let outputText = '';
-  let timeout: NodeJS.Timeout;
+  let timeout: ReturnType<typeof setTimeout>;
 
   return new Promise((resolve, reject) => {
     // Listen for output
