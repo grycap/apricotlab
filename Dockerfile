@@ -1,5 +1,7 @@
 FROM ubuntu:24.04
 
+ARG BRANCH=main
+
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive \
     VENV_PATH=/opt/venv \
@@ -25,7 +27,9 @@ RUN pip install --upgrade pip \
     IM-client \
     tabulate \
     requests \
-    PyJWT
+    PyJWT \
+    hatch-jupyter-builder \
+    hatchling
 
 # Install Node.js v22, Yarn globally and clean up APT cache
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
@@ -37,7 +41,15 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
 WORKDIR /home/apricotlab/
 
 # Install the Jupyter Notebook extension
-RUN git clone https://github.com/grycap/apricotlab /home/apricotlab
+RUN git clone https://github.com/grycap/apricotlab -b ${BRANCH} /home/apricotlab && ls -a
+
+# Install Node dependencies
+RUN jlpm install
+
+# Build the extension
+RUN jlpm run build:prod
+
+# Install Python package
 RUN pip install -ve .
 
 # Expose port 8888 (default port for Jupyter Lab)
