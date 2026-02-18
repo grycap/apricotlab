@@ -2925,7 +2925,7 @@ __metadata:
     "@jupyterlab/services": "npm:^7.5.3"
     "@jupyterlab/ui-components": "npm:^4.5.4"
     "@lumino/disposable": "npm:^2.1.5"
-    "@lumino/widgets": "npm:^2.7.3"
+    "@lumino/widgets": "npm:^2.7.5"
     "@types/js-yaml": "npm:^4.0.9"
     "@types/json-schema": "npm:^7.0.11"
     "@types/micromatch": "npm:^4"
