@@ -55,27 +55,20 @@
         "watch:labextension": "jupyter labextension watch ."
     },
     "dependencies": {
-        "@jupyterlab/application": "^4.5.4",
-        "@jupyterlab/apputils": "^4.6.4",
-        "@jupyterlab/docregistry": "^4.5.4",
-        "@jupyterlab/notebook": "^4.5.4",
-        "@jupyterlab/services": "^7.5.3",
-        "@jupyterlab/ui-components": "^4.5.4",
+        "@jupyterlab/application": "^4.5.6",
+        "@jupyterlab/apputils": "^4.6.6",
+        "@jupyterlab/docregistry": "^4.5.6",
+        "@jupyterlab/notebook": "^4.5.6",
+        "@jupyterlab/services": "^7.5.6",
+        "@jupyterlab/ui-components": "^4.5.6",
         "@lumino/disposable": "^2.1.5",
         "@lumino/widgets": "^2.7.5",
-        "base": "^3.0.0",
-        "js-yaml": "4.1.1",
-        "lodash": "4.17.23",
-        "micromatch": "4.0.8",
-        "react": "^18.3.1",
-        "react-dom": "^18.3.1",
-        "webpack": "5.104.1",
-        "ws": "8.19.0"
+        "js-yaml": "4.1.1"
     },
     "devDependencies": {
-        "@jupyterlab/builder": "^4.0.0",
+        "@jupyterlab/builder": "^4.5.6",
         "@types/js-yaml": "^4.0.9",
-        "@types/json-schema": "^7.0.11",
+        "@types/json-schema": "^7.0.15",
         "@types/micromatch": "^4",
         "@types/react": "^18.3.0",
         "@types/react-addons-linked-state-mixin": "^0.14.22",
@@ -88,6 +81,8 @@
         "eslint-plugin-prettier": "^5.2.1",
         "glob": "^10.5.0",
         "prettier": "^3.3.3",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
         "rimraf": "^6.0.1",
         "source-map-loader": "^5.0.0",
         "style-loader": "^4.0.0",
@@ -97,6 +92,7 @@
         "stylelint-csstree-validator": "^3.0.0",
         "stylelint-prettier": "^4.0.0",
         "typescript": "^5.7.2",
+        "webpack": "5.104.1",
         "yjs": "^13.6.24"
     },
     "sideEffects": [
