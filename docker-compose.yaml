@@ -1,0 +1,25 @@
+services:
+  apricotlab:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/grycap/apricotlab
+    container_name: apricotlab
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./:/home/apricotlab
+    working_dir: /home/apricotlab
+    environment:
+      JUPYTER_TOKEN: ${JUPYTER_TOKEN:-apricotlab}
+    command:
+      [
+        "jupyter",
+        "lab",
+        "--ip=0.0.0.0",
+        "--port=8888",
+        "--no-browser",
+        "--allow-root",
+        "--ServerApp.token=${JUPYTER_TOKEN:-apricotlab}"
+      ]
+    restart: unless-stopped
