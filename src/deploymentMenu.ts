@@ -187,6 +187,7 @@ const imEndpoint = 'https://im.egi.eu/im';
 
 async function openDeploymentDialog(): Promise<void> {
   const dialogContent = document.createElement('div');
+  dialogContent.classList.add('apricot-dialog');
 
   deployRecipeType(dialogContent);
 
@@ -197,6 +198,7 @@ async function openDeploymentDialog(): Promise<void> {
     body: contentWidget,
     buttons: [Dialog.cancelButton()]
   });
+  dialog.addClass('apricot-dialog');
 
   // Prevent the use of the Enter button, except in text areas
   (dialog as any)._evtKeydown = (event: KeyboardEvent) => {

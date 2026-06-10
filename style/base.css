@@ -23,63 +23,63 @@
 }
 
 /* Styles for the dialog */
-.jp-Dialog-content {
+.apricot-dialog .jp-Dialog-content {
   resize: none;
   max-width: 2000px !important;
   max-height: 1000px !important;
   min-width: 350px !important;
 }
 
-.jp-Dialog-header {
+.apricot-dialog .jp-Dialog-header {
   font-weight: 500;
   color: #f6a83a;
 }
 
-.jp-Dialog p {
+.apricot-dialog p {
   font-weight: 500;
 }
 
-.form-instructions {
+.apricot-dialog .form-instructions {
   margin-bottom: 12px;
   font-size: 14px;
   color: var(--jp-ui-font-color1);
 }
 
 /* Styles for the text area */
-.recipe-textarea {
+.apricot-dialog .recipe-textarea {
   width: 40vw;
   aspect-ratio: 4 / 5;
   height: auto;
 }
 
-.recipe-textarea:focus {
+.apricot-dialog .recipe-textarea:focus {
   outline-color: #f6a83a;
 }
 
 /* Styles for the table */
-.deployments-table {
+.apricot-dialog .deployments-table {
   width: 100%;
   border-collapse: collapse;
   margin-top: 10px;
   font-size: 14px;
 }
 
-.deployments-table th,
-.deployments-table td {
+.apricot-dialog .deployments-table th,
+.apricot-dialog .deployments-table td {
   border: 1px solid #ddd;
   padding: 6px;
   text-align: left;
 }
 
-.deployments-table tr:nth-child(even) {
+.apricot-dialog .deployments-table tr:nth-child(even) {
   background-color: #f2f2f2;
 }
 
-.deployments-table tr:hover {
+.apricot-dialog .deployments-table tr:hover {
   background-color: #ddd;
 }
 
-.deployments-table th {
+.apricot-dialog .deployments-table th {
   padding-top: 12px;
   padding-bottom: 12px;
   background-color: #f6a83a;
@@ -87,33 +87,33 @@
 }
 
 /* Styles for the loaders */
-.loader-container {
+.apricot-dialog .loader-container {
   display: flex;
   justify-content: center;
   align-items: center;
   height: 200px;
 }
 
-.loader {
+.apricot-dialog .loader {
   width: 80px;
   height: 80px;
   border: 8px solid #0000001a;
   border-left-color: #f6a83a;
   border-radius: 50%;
-  animation: spin 1s linear infinite;
+  animation: apricot-spin 1s linear infinite;
 }
 
-.mini-loader {
+.apricot-dialog .mini-loader {
   width: 20px;
   height: 20px;
   border: 2px solid #f3f3f3;
   border-top: 2px solid #f6a83a;
   border-radius: 50%;
-  animation: spin 1s linear infinite;
+  animation: apricot-spin 1s linear infinite;
   display: inline-block;
 }
 
-@keyframes spin {
+@keyframes apricot-spin {
   0% {
     transform: rotate(0deg);
   }
@@ -124,7 +124,7 @@
 }
 
 /* Styles for the success deployment */
-.success-container {
+.apricot-dialog .success-container {
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -132,7 +132,7 @@
   height: 400px;
 }
 
-.success-circle {
+.apricot-dialog .success-circle {
   width: 100px;
   height: 100px;
   border-radius: 50%;
@@ -144,39 +144,39 @@
   margin-bottom: 20px;
 }
 
-.success-circle i {
+.apricot-dialog .success-circle i {
   font-size: 50px;
   color: white;
 }
 
-.success-container p {
+.apricot-dialog .success-container p {
   color: #333;
   font-size: 16px;
   margin: 0;
 }
 
 /* Styles for the dialog buttons */
-.footer-button-container {
+.apricot-dialog .footer-button-container {
   display: flex;
   justify-content: flex-end;
   margin-top: 16px;
 }
 
-.footer-button {
+.apricot-dialog .footer-button {
   margin-left: 8px;
 }
 
-.jp-Button {
+.apricot-dialog .jp-Button {
   color: var(--jp-ui-font-color0);
 }
 
-.jp-Button:focus,
-.jp-Button:active {
+.apricot-dialog .jp-Button:focus,
+.apricot-dialog .jp-Button:active {
   background-color: #f6a83a;
 }
 
 /* Styles for the childs buttons */
-.child-buttons {
+.apricot-dialog .child-buttons {
   margin-inline: 3px;
   margin-bottom: 20px;
   min-height: 15px !important;
@@ -185,30 +185,30 @@
   border: 1px solid transparent;
 }
 
-.child-buttons:hover {
+.apricot-dialog .child-buttons:hover {
   background-color: var(--jp-layout-color3);
 }
 
-.child-buttons:focus,
-.child-buttons:active {
+.apricot-dialog .child-buttons:focus,
+.apricot-dialog .child-buttons:active {
   background-color: #f6a83a;
 }
 
 /* Styles for the forms */
-form {
+.apricot-dialog form {
   margin-bottom: 8px;
 }
 
-form label,
-.images-label {
+.apricot-dialog form label,
+.apricot-dialog .images-label {
   display: block;
   font-weight: 500;
   margin-bottom: 2px;
   margin-top: 6px;
 }
 
-.cm-editor,
-input {
+.apricot-dialog .cm-editor,
+.apricot-dialog input {
   line-height: var(--jp-code-line-height);
   font-size: var(--jp-code-font-size);
   font-family: var(--jp-code-font-family);
@@ -217,13 +217,13 @@ input {
   outline-color: #f6a83a;
 }
 
-form input {
+.apricot-dialog form input {
   background: var(--jp-cell-editor-background);
   width: 90%;
 }
 
-.dropdown,
-select {
+.apricot-dialog .dropdown,
+.apricot-dialog select {
   border: none;
   display: block;
   font-size: var(--jp-ui-font-family);
@@ -232,12 +232,12 @@ select {
   margin-top: 6px;
 }
 
-.dropdown:hover,
-select:hover {
+.apricot-dialog .dropdown:hover,
+.apricot-dialog select:hover {
   background-color: var(--jp-layout-color2);
 }
 
-.dropdown:focus-visible,
-select:focus-visible {
+.apricot-dialog .dropdown:focus-visible,
+.apricot-dialog select:focus-visible {
   outline-color: #f6a83a;
 }
