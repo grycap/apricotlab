@@ -42,6 +42,7 @@ async function openListDeploymentsDialog(): Promise<void> {
 
     // Create the dialog content
     const dialogContent = document.createElement('div');
+    dialogContent.classList.add('apricot-dialog');
     dialogContent.appendChild(loaderContainer);
 
     const contentWidget = new Widget({ node: dialogContent });
@@ -50,6 +51,7 @@ async function openListDeploymentsDialog(): Promise<void> {
       body: contentWidget,
       buttons: [Dialog.cancelButton()]
     });
+    dialog.addClass('apricot-dialog');
 
     dialog.launch();
 
