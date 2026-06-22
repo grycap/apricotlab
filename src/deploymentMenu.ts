@@ -104,25 +104,10 @@ const deployInfo: IDeployInfo = {
 const recipes: IRecipe[] = [
   {
     name: 'Simple node disk',
-    childs: ['galaxy', 'ansible_tasks', 'noderedvm', 'minio_compose']
+    childs: []
   },
   {
     name: 'Slurm',
-    childs: ['slurm_elastic', 'slurm_galaxy', 'docker_cluster']
-  },
-  {
-    name: 'Kubernetes',
-    childs: [
-      'kubeapps',
-      'prometheus',
-      'minio_compose',
-      'nodered',
-      'influxdb',
-      'argo'
-    ]
-  },
-  {
-    name: 'Custom recipe',
     childs: []
   }
 ];
@@ -422,8 +407,7 @@ function getMainRecipeFileName(recipeName: string): string {
 
   const mainRecipeMap: Record<string, string> = {
     'simple node disk': 'simple-node-disk.yaml',
-    slurm: 'slurm_cluster.yaml',
-    kubernetes: 'kubernetes.yaml'
+    slurm: 'slurm_cluster.yaml'
   };
 
   return mainRecipeMap[normalized] ?? normalized.replace(/\s+/g, '_') + '.yaml';
@@ -764,12 +748,13 @@ const deployRecipeType = (dialogBody: HTMLElement): void => {
       });
 
       deployInfo.recipe = recipe.name.trim().toLowerCase();
-
-      if (recipe.name === 'Custom recipe') {
-        customRecipe(dialogBody);
-      } else {
-        await createCheckboxesForChilds(dialogBody, recipe.childs);
+      if (recipe.childs.length === 0) {
+        deployInfo.childs = [];
+        deployChooseProvider(dialogBody);
+        return;
       }
+
+      await createCheckboxesForChilds(dialogBody, recipe.childs);
     });
     button.classList.add('recipe-button');
     dialogBody.appendChild(button);
@@ -845,9 +830,9 @@ const createCheckboxesForChilds = async (
       dialogBody.querySelectorAll('input[type="checkbox"]:checked')
     ).map((checkbox: Element) => (checkbox as HTMLInputElement).name);
 
-    // Always include slurm and kubernetes if main recipe is one of them
+    // Always include slurm if main recipe is one of them
     const mainRecipe = deployInfo.recipe.toLowerCase();
-    const alwaysInclude = ['slurm', 'kubernetes'];
+    const alwaysInclude = ['slurm'];
     if (alwaysInclude.includes(mainRecipe)) {
       selectedChilds.push(mainRecipe);
     }

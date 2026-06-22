@@ -41,7 +41,31 @@
 
 A [Jupyter](https://jupyter.org/install) environment (compatible with JupyterLab ≥ 4.0.0).
 
-The [Infrastructure Manager (IM)](https://imdocs.readthedocs.io/en/devel/gstarted.html) client must be installed and configured, an open-source virtual infrastructure provisioning tool for multi-Clouds.
+The [Infrastructure Manager (IM)](https://imdocs.readthedocs.io/en/devel/gstarted.html) client must be configured, an open-source virtual infrastructure provisioning tool for multi-Clouds.
+
+## 📦 Installation
+
+If you already have a JupyterLab environment, install APRICOTLab with:
+
+```bash
+python -m pip install apricot
+```
+
+Then start JupyterLab:
+
+```bash
+jupyter lab
+```
+
+The Python package installs the runtime dependencies used by the IPython magics, including the IM client, `IPython`, `tabulate`, `requests`, and `PyJWT`.
+
+You can check that JupyterLab detects the prebuilt extension with:
+
+```bash
+jupyter labextension list
+```
+
+When installing from a published wheel, Node.js and `jlpm` are not required.
 
 ## ✨ IPython Magics for Infrastructure Management
 
@@ -112,6 +136,7 @@ This will launch a JupyterLab instance with APRICOT pre-installed.
 
 > Note: Node.js is required for building the extension.
 > Note: The `jlpm` command is JupyterLab's pinned version of [yarn](https://yarnpkg.com/) that is installed with JupyterLab.
+> Note: These steps are only needed when installing from the source repository for development.
 
 ```bash
 # Clone the repository
@@ -126,6 +151,9 @@ jupyter labextension develop . --overwrite
 
 # Build the extension
 jlpm build
+
+# Start JupyterLab
+jupyter lab
 ```
 
 You can run the extension in watch mode:
