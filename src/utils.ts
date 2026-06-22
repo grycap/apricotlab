@@ -1,5 +1,8 @@
-import { KernelManager } from '@jupyterlab/services';
+import { KernelManager, ServerConnection } from '@jupyterlab/services';
 import { Notification } from '@jupyterlab/apputils';
+
+export const imEndpoint = 'https://im.egi.eu/im';
+const hubTokenServicePath = 'services/share_manager/token';
 
 let kernelManager: KernelManager | null = null;
 let kernel: any | null = null;
@@ -44,6 +47,119 @@ export async function executeKernelCommand(command: string): Promise<string> {
       }
     };
   });
+}
+
+function getHubTokenServiceUrls(): string[] {
+  const origin = window.location.origin;
+  const pathname = window.location.pathname;
+  const urls = [new URL(`/${hubTokenServicePath}`, origin).toString()];
+
+  const userPathIndex = pathname.indexOf('/user/');
+  if (userPathIndex > 0) {
+    const hubBasePath = pathname.slice(0, userPathIndex);
+    urls.unshift(
+      new URL(`${hubBasePath}/${hubTokenServicePath}`, origin).toString()
+    );
+  }
+
+  return Array.from(new Set(urls));
+}
+
+function extractAccessToken(responseData: any): string {
+  if (typeof responseData === 'string') {
+    return responseData.trim();
+  }
+
+  return (
+    responseData?.access_token ||
+    responseData?.token ||
+    responseData?.accessToken ||
+    ''
+  );
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+export async function acquireHubAccessToken(): Promise<string> {
+  const serverSettings = ServerConnection.makeSettings();
+  const browserToken = serverSettings.token;
+
+  if (!browserToken) {
+    return '';
+  }
+
+  for (const tokenUrl of getHubTokenServiceUrls()) {
+    try {
+      const response = await fetch(tokenUrl, {
+        method: 'GET',
+        headers: {
+          Authorization: `bearer ${browserToken}`,
+          Accept: 'application/json'
+        },
+        credentials: 'same-origin'
+      });
+
+      if (!response.ok) {
+        continue;
+      }
+
+      const contentType = response.headers.get('content-type') || '';
+      const responseData = contentType.includes('application/json')
+        ? await response.json()
+        : await response.text();
+      const accessToken = extractAccessToken(responseData);
+
+      if (accessToken) {
+        return accessToken;
+      }
+    } catch (error) {
+      console.warn(`Failed to acquire token from ${tokenUrl}:`, error);
+    }
+  }
+
+  return '';
+}
+
+export async function refreshIMAuthTokenFromHub(): Promise<string> {
+  const accessToken = await acquireHubAccessToken();
+
+  if (!accessToken) {
+    return '';
+  }
+
+  const authFilePath = await getAuthFilePath();
+  const cmd = `%%bash
+PWD=$(pwd)
+auth_file="$PWD"/${shellQuote(authFilePath)}
+token=${shellQuote(accessToken)}
+tmp_file="$auth_file.tmp"
+im_line="id = im; type = InfrastructureManager; token = $token;"
+
+if [ -f "$auth_file" ] && grep -q '^id[[:space:]]*=[[:space:]]*im[[:space:]]*;' "$auth_file"; then
+  awk -v im_line="$im_line" '
+    /^id[[:space:]]*=[[:space:]]*im[[:space:]]*;/ { print im_line; next }
+    { print }
+  ' "$auth_file" > "$tmp_file"
+else
+  printf '%s\\n' "$im_line" > "$tmp_file"
+  if [ -f "$auth_file" ]; then
+    cat "$auth_file" >> "$tmp_file"
+  fi
+fi
+
+mv "$tmp_file" "$auth_file"
+echo "IM auth token refreshed"
+`;
+
+  try {
+    await executeKernelCommand(cmd);
+    return accessToken;
+  } catch (error) {
+    console.warn('Failed to refresh IM auth token from JupyterHub:', error);
+    return '';
+  }
 }
 
 async function getPath(

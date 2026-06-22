@@ -11,7 +11,9 @@ import {
   getIMClientPath,
   getDeployedTemplatePath,
   getAuthFilePath,
-  createButton
+  createButton,
+  imEndpoint,
+  acquireHubAccessToken
 } from './utils';
 
 interface IDeployInfo {
@@ -164,8 +166,6 @@ let imageOptions: { uri: string; name: string }[] = [];
 
 let deploying = false; // Flag to prevent multiple deployments at the same time
 
-const imEndpoint = 'https://im.egi.eu/im';
-
 //*****************//
 //* Aux functions *//
 //*****************//
@@ -235,6 +235,11 @@ const addFormInput = (
 function getInputValue(inputId: string): string {
   const input = document.getElementById(inputId) as HTMLInputElement;
   return input.value;
+}
+
+function getOptionalInputValue(inputId: string): string {
+  const input = document.getElementById(inputId) as HTMLInputElement | null;
+  return input?.value || '';
 }
 
 function detectRecipeFormat(content: string): 'radl' | 'yaml' | 'json' {
@@ -931,6 +936,12 @@ const deployProviderCredentials = async (
   dialogBody.appendChild(form);
 
   let text = '';
+  const acquiredAccessToken =
+    deployInfo.deploymentType === 'EC2' ? '' : await acquireHubAccessToken();
+
+  if (acquiredAccessToken) {
+    deployInfo.accessToken = acquiredAccessToken;
+  }
 
   switch (deployInfo.deploymentType) {
     case 'EC2': {
@@ -974,7 +985,9 @@ const deployProviderCredentials = async (
           deployInfo.authVersion
         );
       }
-      addFormInput(form, 'Access token:', 'access_token', '');
+      if (!deployInfo.accessToken) {
+        addFormInput(form, 'Access token:', 'access_token', '');
+      }
       break;
 
     case 'EGI':
@@ -982,11 +995,20 @@ const deployProviderCredentials = async (
 
       addFormInput(form, 'VO:', 'vo', deployInfo.vo);
       addFormInput(form, 'Site name:', 'site', deployInfo.host);
-      addFormInput(form, 'Access token:', 'access_token', '');
+      if (!deployInfo.accessToken) {
+        addFormInput(form, 'Access token:', 'access_token', '');
+      }
       break;
   }
 
   form.insertAdjacentHTML('afterbegin', text);
+
+  if (acquiredAccessToken) {
+    form.insertAdjacentHTML(
+      'beforeend',
+      '<p class="form-instructions">Access token acquired automatically from JupyterHub.</p>'
+    );
+  }
 
   footerButtonContainer.innerHTML = '';
 
@@ -1026,13 +1048,15 @@ const deployProviderCredentials = async (
           deployInfo.domain = getInputValue('domain');
           deployInfo.authVersion = getInputValue('authVersion');
         }
-        deployInfo.accessToken = getInputValue('access_token');
+        deployInfo.accessToken =
+          deployInfo.accessToken || getOptionalInputValue('access_token');
         break;
 
       case 'EGI':
         deployInfo.host = getInputValue('site');
         deployInfo.vo = getInputValue('vo');
-        deployInfo.accessToken = getInputValue('access_token');
+        deployInfo.accessToken =
+          deployInfo.accessToken || getOptionalInputValue('access_token');
         break;
     }
 

@@ -6,7 +6,9 @@ import {
   createButton,
   getAuthFilePath,
   executeKernelCommand,
-  getOrStartKernel
+  getOrStartKernel,
+  imEndpoint,
+  refreshIMAuthTokenFromHub
 } from './utils';
 
 interface IInfrastructure {
@@ -26,8 +28,6 @@ interface IInfrastructure {
   vo?: string;
   custom: string;
 }
-
-const imEndpoint = 'https://im.egi.eu/im';
 
 async function openListDeploymentsDialog(): Promise<void> {
   try {
@@ -101,6 +101,7 @@ async function deleteButton(
     deleteButton.textContent = '';
 
     try {
+      await refreshIMAuthTokenFromHub();
       const cmdDeploy = await destroyInfrastructure(infrastructureId);
 
       deleteButton.appendChild(loader);
@@ -201,6 +202,10 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
       }
     );
     throw new Error('Error parsing JSON data');
+  }
+
+  if (infrastructures.length > 0) {
+    await refreshIMAuthTokenFromHub();
   }
 
   // Populate the table rows and fetch IP and state for each infrastructure
