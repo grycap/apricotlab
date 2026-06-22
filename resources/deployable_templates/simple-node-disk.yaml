@@ -8,7 +8,7 @@ description: >
 
 metadata:
   template_name: VM
-  template_version: "1.2.0"
+  template_version: "1.2.3"
   template_author: Miguel Caballer
   creation_date: 2020-09-08
   display_name: Deploy a VM
@@ -26,30 +26,8 @@ metadata:
       - storage_size
       - mount_path
       - ports
+      - dns_name
     GPU Data: .*gpu.*
-  childs:
-    - docker.yaml
-    - galaxy.yaml
-    - users.yml
-    - ssh_keys.yml
-    - proxy_host.yaml
-    - minio_compose.yaml
-    - nvidia.yml
-    - ansible_tasks.yml
-    - ssh_oidc.yaml
-    - noderedvm.yaml
-    - cernvmfs.yaml
-    - image-service.yaml
-    - ai4eoscvm.yaml
-    - mlflowvm.yaml
-    - mlflow_authvm.yaml
-    - wget.yml
-    - sgde.yaml
-    - dydns_egi_update_vm.yml
-    - flowfuse.yaml
-    - stac_vm.yaml
-    - ollama.yaml
-    - juno_compose.yaml
 
 topology_template:
 
@@ -63,9 +41,9 @@ topology_template:
     mem_size:
       type: scalar-unit.size
       description: Amount of memory for the VM
-      default: 4 GiB
+      default: 4 GB
       constraints:
-        - valid_values: [ 4 GiB, 8 GiB, 16 GiB, 32 GiB, 64 GiB, 128 GiB, 256 GiB, 512 GiB, 2 GiB ]
+        - valid_values: [ 4 GB, 8 GB, 16 GB, 32 GB, 64 GB, 128 GB, 256 GB, 512 GB, 2 GB ]
     disk_size:
       type: scalar-unit.size
       description: Size of the root disk of the VM (in case of 0 disk will no be resized)
@@ -128,6 +106,11 @@ topology_template:
           source: 22
           protocol: tcp
 
+    dns_name:
+      type: string
+      description: DNS name to be used for the VM
+      default: ""
+
   node_templates:
 
     simple_node:
@@ -135,6 +118,8 @@ topology_template:
       capabilities:
         endpoint:
           properties:
+            additional_dns_names:
+              - { get_input: dns_name }
             network_name: PUBLIC
             ports: { get_input: ports }
         scalable:
