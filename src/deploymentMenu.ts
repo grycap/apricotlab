@@ -10,7 +10,8 @@ import {
   getIMClientPath,
   getDeployedTemplatePath,
   getAuthFilePath,
-  writeAuthFile,
+  getAccessTokenFromShareManager,
+  persistAuthFile,
   writeTextFile,
   createButton
 } from './utils';
@@ -233,7 +234,7 @@ const addFormInput = (
 
 function getInputValue(inputId: string): string {
   const input = document.getElementById(inputId) as HTMLInputElement;
-  return input.value;
+  return input?.value || '';
 }
 
 function detectRecipeFormat(content: string): 'radl' | 'yaml' | 'json' {
@@ -245,6 +246,36 @@ function detectRecipeFormat(content: string): 'radl' | 'yaml' | 'json' {
     return 'yaml';
   }
   return 'radl';
+}
+
+function appendVmImagesTitle(container: HTMLElement): void {
+  const title = document.createElement('p');
+  title.textContent = 'VM Images';
+  title.classList.add('form-instructions');
+  container.appendChild(title);
+}
+
+function showManualAccessTokenInput(form: HTMLFormElement): void {
+  const existingInput = form.querySelector<HTMLInputElement>('#access_token');
+
+  if (existingInput) {
+    existingInput.required = true;
+    existingInput.focus();
+    return;
+  }
+
+  const input = addFormInput(
+    form,
+    'Access token:',
+    'access_token',
+    '',
+    'text',
+    undefined,
+    undefined,
+    'Paste your EGI access token'
+  );
+  input.required = true;
+  input.focus();
 }
 
 async function createImagesDropdown(
@@ -286,9 +317,10 @@ async function createImagesDropdown(
 
     // Clear the dropdown container before appending new content
     dropdownContainer.innerHTML = '';
+    appendVmImagesTitle(dropdownContainer);
 
     const label = document.createElement('label');
-    label.textContent = 'Images:';
+    label.textContent = 'Image:';
     label.classList.add('images-label');
     dropdownContainer.appendChild(label);
 
@@ -563,6 +595,8 @@ async function createImageDropdown(
   dropdownContainer: HTMLElement,
   nextBtn: HTMLButtonElement
 ): Promise<void> {
+  appendVmImagesTitle(dropdownContainer);
+
   const loader = document.createElement('div');
   loader.className = 'mini-loader';
   dropdownContainer.appendChild(loader);
@@ -660,20 +694,7 @@ async function selectImage(obj: IDeployInfo): Promise<string> {
   const imClientPath = await getIMClientPath();
   const authFilePath = await getAuthFilePath();
 
-  // Command to create the IM-cli credentials
-  let authContent = `id = im; type = InfrastructureManager; token = ${obj.accessToken};\n`;
-  authContent += `id = ${obj.id}; type = ${obj.deploymentType}; host = ${obj.host}; `;
-
-  if (obj.deploymentType === 'OpenNebula') {
-    authContent += ` username = ${obj.username}; password = ${obj.password};`;
-  } else if (obj.deploymentType === 'OpenStack') {
-    authContent += `username = ${obj.username}; password = ${obj.password}; tenant = ${obj.tenant}; auth_version = ${obj.authVersion}; domain = ${obj.domain}`;
-  } else if (obj.deploymentType === 'EGI') {
-    authContent += ` vo = ${obj.vo}; token = ${obj.accessToken}`;
-  }
-  authContent += '\n';
-
-  await writeAuthFile(authContent);
+  await persistAuthFile(obj);
 
   const cmd = `
 from pathlib import Path
@@ -993,11 +1014,10 @@ const deployProviderCredentials = async (
       break;
 
     case 'EGI':
-      text = '<p class="form-instructions">Introduce EGI credentials.</p>';
+      text = '<p class="form-instructions">Introduce EGI configuration.</p>';
 
       addFormInput(form, 'VO:', 'vo', deployInfo.vo);
       addFormInput(form, 'Site name:', 'site', deployInfo.host);
-      addFormInput(form, 'Access token:', 'access_token', '');
       break;
   }
 
@@ -1047,10 +1067,29 @@ const deployProviderCredentials = async (
       case 'EGI':
         deployInfo.host = getInputValue('site');
         deployInfo.vo = getInputValue('vo');
-        deployInfo.accessToken = getInputValue('access_token');
+        deployInfo.accessToken = getInputValue('access_token').trim();
+
+        if (deployInfo.accessToken) {
+          break;
+        }
+
+        nextButton.disabled = true;
+        try {
+          deployInfo.accessToken = await getAccessTokenFromShareManager();
+        } catch (error) {
+          console.error('Error getting EGI access token:', error);
+          showManualAccessTokenInput(form);
+          Notification.error(
+            'Could not get the EGI access token automatically. Please paste it manually.',
+            { autoClose: 5000 }
+          );
+          nextButton.disabled = false;
+          return;
+        }
         break;
     }
 
+    await persistAuthFile(deployInfo);
     deployInfraConfiguration(dialogBody);
   });
 

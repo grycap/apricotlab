@@ -5,6 +5,9 @@ import {
   createButton,
   getAuthFilePath,
   executeKernelCommand,
+  getAccessTokenFromShareManager,
+  persistAuthFile,
+  writeAuthFile,
   readInfrastructuresList,
   removeInfrastructureFromList
 } from './utils';
@@ -101,6 +104,7 @@ async function deleteButton(
     deleteButton.textContent = '';
 
     try {
+      await refreshAndPersistListAuth([infrastructure]);
       const cmdDeploy = await destroyInfrastructure(infrastructureId);
 
       deleteButton.appendChild(loader);
@@ -166,7 +170,9 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
     throw new Error('Error parsing JSON data');
   }
 
-  // Populate the table rows and fetch IP and state for each infrastructure
+  await refreshAndPersistListAuth(infrastructures);
+
+  // Populate the table rows and fetch IP and state for each infrastructure.
   await Promise.all(
     infrastructures.map(async infrastructure => {
       const row = table.insertRow();
@@ -200,6 +206,42 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
       actionCell.appendChild(deleteBtn);
     })
   );
+}
+
+async function refreshAndPersistListAuth(
+  infrastructures: IInfrastructure[]
+): Promise<void> {
+  let accessToken = '';
+
+  try {
+    accessToken = await getAccessTokenFromShareManager();
+  } catch (error) {
+    console.warn(
+      'Could not refresh EGI access token before listing deployments.',
+      error
+    );
+  }
+
+  if (infrastructures.length === 0) {
+    await writeAuthFile(
+      `id = im; type = InfrastructureManager; token = ${accessToken || '<token>'}\n`
+    );
+    return;
+  }
+
+  const egiInfrastructure = infrastructures.find(
+    infrastructure => infrastructure.type === 'EGI'
+  );
+
+  if (accessToken) {
+    infrastructures
+      .filter(infrastructure => infrastructure.type === 'EGI')
+      .forEach(infrastructure => {
+        infrastructure.accessToken = accessToken;
+      });
+  }
+
+  await persistAuthFile(egiInfrastructure || infrastructures[0]);
 }
 
 async function getInfrastructureInfo(

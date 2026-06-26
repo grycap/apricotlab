@@ -250,6 +250,118 @@ export async function readAuthFile(): Promise<string> {
   return defaultAuthFileContent;
 }
 
+export function getBrowserToken(): string {
+  const jupyterConfigElement = document.querySelector('#jupyter-config-data');
+  const jupyterConfig = jupyterConfigElement
+    ? JSON.parse(jupyterConfigElement.innerHTML)
+    : {};
+
+  return jupyterConfig.token || '';
+}
+
+function extractAccessToken(payload: any): string {
+  if (typeof payload === 'string') {
+    return payload.trim();
+  }
+
+  return (
+    payload?.access_token ||
+    payload?.accessToken ||
+    payload?.token ||
+    payload?.data?.access_token ||
+    ''
+  );
+}
+
+export async function getAccessTokenFromShareManager(): Promise<string> {
+  const browserToken = getBrowserToken();
+
+  if (!browserToken) {
+    throw new Error('Jupyter browser token not found.');
+  }
+
+  const response = await fetch(
+    'https://notebooks.egi.eu/services/share-manager/token',
+    {
+      headers: {
+        Authorization: `bearer ${browserToken}`
+      }
+    }
+  );
+
+  const responseText = await response.text();
+
+  if (!response.ok) {
+    throw new Error(responseText || `${response.status} ${response.statusText}`);
+  }
+
+  let payload: any = responseText.trim();
+  try {
+    payload = JSON.parse(responseText);
+  } catch {
+    // The endpoint may return the token as plain text.
+  }
+
+  const accessToken = extractAccessToken(payload);
+
+  if (!accessToken) {
+    throw new Error('Share-manager response did not include an access token.');
+  }
+
+  return accessToken;
+}
+
+export function buildAuthFileContent(obj: {
+  accessToken?: string;
+  id: string;
+  deploymentType?: string;
+  type?: string;
+  host: string;
+  username?: string;
+  user?: string;
+  password?: string;
+  pass?: string;
+  tenant?: string;
+  authVersion?: string;
+  domain?: string;
+  vo?: string;
+}): string {
+  const deploymentType = obj.deploymentType || obj.type || '';
+  const username = obj.username || obj.user || '';
+  const password = obj.password || obj.pass || '';
+  let authContent = `id = im; type = InfrastructureManager; token = ${obj.accessToken || ''};\n`;
+  authContent += `id = ${obj.id}; type = ${deploymentType}; host = ${obj.host}; `;
+
+  if (deploymentType === 'OpenNebula') {
+    authContent += ` username = ${username}; password = ${password};`;
+  } else if (deploymentType === 'OpenStack') {
+    authContent += `username = ${username}; password = ${password}; tenant = ${obj.tenant || ''}; auth_version = ${obj.authVersion || ''}; domain = ${obj.domain || ''}`;
+  } else if (deploymentType === 'EGI') {
+    authContent += ` vo = ${obj.vo || ''}; token = ${obj.accessToken || ''}`;
+  }
+  authContent += '\n';
+
+  return authContent;
+}
+
+export async function persistAuthFile(obj: {
+  accessToken?: string;
+  id: string;
+  deploymentType?: string;
+  type?: string;
+  host: string;
+  username?: string;
+  user?: string;
+  password?: string;
+  pass?: string;
+  tenant?: string;
+  authVersion?: string;
+  domain?: string;
+  vo?: string;
+}): Promise<void> {
+  await writeAuthFile(buildAuthFileContent(obj));
+}
+
 function getStatePathCommand(statePath: string): string {
   return `
 from pathlib import Path
