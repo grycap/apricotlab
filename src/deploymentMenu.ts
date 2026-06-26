@@ -1,13 +1,12 @@
 import * as jsyaml from 'js-yaml';
 
-import { ContentsManager } from '@jupyterlab/services';
+import { ServerConnection } from '@jupyterlab/services';
 import { Widget } from '@lumino/widgets';
 import { Dialog, Notification } from '@jupyterlab/apputils';
 
 import {
   appendInfrastructureToList,
   executeKernelCommand,
-  getDeployableTemplatesPath,
   getIMClientPath,
   getDeployedTemplatePath,
   getAuthFilePath,
@@ -159,8 +158,6 @@ const resetDeployInfo = () => {
 
 const footerButtonContainer = document.createElement('div');
 footerButtonContainer.className = 'footer-button-container';
-
-const contentsManager = new ContentsManager();
 
 let imageOptions: { uri: string; name: string }[] = [];
 
@@ -415,19 +412,49 @@ function getMainRecipeFileName(recipeName: string): string {
   return mainRecipeMap[normalized] ?? normalized.replace(/\s+/g, '_') + '.yaml';
 }
 
+async function loadRecipeYaml(recipeName: string): Promise<string> {
+  const recipeFileName = getMainRecipeFileName(recipeName);
+  const settings = ServerConnection.makeSettings();
+  const baseUrl = settings.baseUrl.endsWith('/')
+    ? settings.baseUrl
+    : `${settings.baseUrl}/`;
+  const recipeUrl = `${baseUrl}lab/extensions/apricot/resources/deployable_templates/${encodeURIComponent(
+    recipeFileName
+  )}`;
+
+  try {
+    const response = await ServerConnection.makeRequest(
+      recipeUrl,
+      { method: 'GET' },
+      settings
+    );
+
+    if (!response.ok) {
+      throw new Error(`${response.status} ${response.statusText}`);
+    }
+
+    return await response.text();
+  } catch (extensionError) {
+    console.error(
+      `Failed to load recipe template '${recipeFileName}' from extension URL '${recipeUrl}'.`,
+      extensionError
+    );
+    throw extensionError;
+  }
+}
+
+async function loadRecipeTemplate(recipeName: string): Promise<any> {
+  const yamlContent = await loadRecipeYaml(recipeName);
+  return jsyaml.load(yamlContent);
+}
+
 async function createChildsForm(
   childName: string,
   index: number,
   deployDialog: HTMLElement,
   buttonsContainer: HTMLElement
 ) {
-  const templatesPath = await getDeployableTemplatesPath();
-
-  const recipeFileName = getMainRecipeFileName(childName);
-  const file = await contentsManager.get(`${templatesPath}/${recipeFileName}`);
-
-  const yamlContent = file.content as string;
-  const yamlData: any = jsyaml.load(yamlContent);
+  const yamlData: any = await loadRecipeTemplate(childName);
   const metadata = yamlData.metadata;
   const templateName = metadata.template_name;
   const inputs = yamlData.topology_template.inputs;
@@ -557,18 +584,11 @@ async function createImageDropdown(
 }
 
 async function loadRecipeInputs(recipe: string): Promise<any | null> {
-  const recipeFileName = getMainRecipeFileName(recipe);
-  let templatePath = recipeFileName;
-
   try {
-    const templatesPath = await getDeployableTemplatesPath();
-    templatePath = `${templatesPath}/${recipeFileName}`;
-    const file = await contentsManager.get(templatePath);
-    const yamlContent = file.content as string;
-    const yamlData: any = jsyaml.load(yamlContent);
+    const yamlData: any = await loadRecipeTemplate(recipe);
     return yamlData?.topology_template?.inputs || null;
   } catch (error) {
-    console.error(`Failed to load recipe inputs from ${templatePath}:`, error);
+    console.error(`Failed to load recipe inputs for ${recipe}:`, error);
     return null;
   }
 }
@@ -579,11 +599,7 @@ async function collectUserInputsFromForm(
   nodeTemplates: any,
   outputs: any
 ): Promise<UserInput | null> {
-  const templatesPath = await getDeployableTemplatesPath();
-  const recipeFileName = getMainRecipeFileName(childName);
-  const file = await contentsManager.get(`${templatesPath}/${recipeFileName}`);
-  const yamlContent = file.content as string;
-  const yamlData: any = jsyaml.load(yamlContent);
+  const yamlData: any = await loadRecipeTemplate(childName);
   const recipeInputs = yamlData.topology_template.inputs;
 
   if (!recipeInputs) {
@@ -779,8 +795,6 @@ const createCheckboxesForChilds = async (
   dialogBody: HTMLElement,
   childs: string[]
 ): Promise<void> => {
-  const templatesPath = await getDeployableTemplatesPath();
-
   // Create paragraph element for checkboxes
   const paragraph = document.createElement('p');
   paragraph.textContent = 'Select optional recipe features:';
@@ -792,15 +806,8 @@ const createCheckboxesForChilds = async (
 
   // Load YAML files and create checkboxes
   const promises = childs.map(async child => {
-    // Load YAML file asynchronously
-    const recipeFileName = getMainRecipeFileName(child);
-    const file = await contentsManager.get(
-      `${templatesPath}/${recipeFileName}`
-    );
-    const yamlContent = file.content as string;
-
     // Parse YAML content
-    const parsedYaml: any = jsyaml.load(yamlContent);
+    const parsedYaml: any = await loadRecipeTemplate(child);
     const templateName = parsedYaml.metadata.template_name;
 
     // Create list item for checkbox
@@ -1216,7 +1223,8 @@ async function deployInfraConfiguration(
       });
   } else {
     const noInputsMessage = document.createElement('p');
-    noInputsMessage.textContent = 'No inputs found.';
+    noInputsMessage.textContent =
+      'No inputs found. Check that the recipe template is available.';
     form.appendChild(noInputsMessage);
   }
 
@@ -1328,14 +1336,7 @@ async function deployFinalRecipe(
         }
       }
     }
-    const recipeFileName = getMainRecipeFileName(deployInfo.recipe);
-
-    const templatesPath = await getDeployableTemplatesPath();
-    const file = await contentsManager.get(
-      `${templatesPath}/${recipeFileName}`
-    );
-    const yamlContent = file.content;
-    const parsedTemplate = jsyaml.load(yamlContent) as any;
+    const parsedTemplate = (await loadRecipeTemplate(deployInfo.recipe)) as any;
 
     // Add infrastructure name and a hash to the metadata
     parsedTemplate.metadata = parsedTemplate.metadata || {};

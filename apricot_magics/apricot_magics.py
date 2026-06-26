@@ -22,38 +22,43 @@ class Apricot_Magics(Magics):
         self.load_paths()
 
         data = self.load_json(self.inf_list_path)
-        access_token = data.get("access_token")
+        access_token = data.get("access_token", "")
+        refresh_token = data.get("refresh_token", "")
+        self.client = None
 
-        if access_token != "":
+        if access_token:
             auth = f"""
                 type = InfrastructureManager; token = {access_token}
             """
-        else:
-            refresh_token = data["refresh_token"]
+            self.client = IMClient.init_client(IM_ENDPOINT, auth)
+        elif refresh_token:
             self.generate_new_access_token(refresh_token)
-
-        self.client = IMClient.init_client(IM_ENDPOINT, auth)
+            self.initialize_im_client()
 
     ########################
     #  Auxiliar functions  #
     ########################
 
     def load_paths(self):
-        # Get the absolute path to the current file (apricot_magics.py)
-        current_dir = Path(__file__).parent
+        state_dir = Path.cwd() / "apricotlab_state"
+        state_dir.mkdir(exist_ok=True)
 
-        # Construct the path to the 'resources' folder relative to 'apricot_magics/'
-        resources_dir = current_dir.parent / "resources"
+        self.inf_list_path = state_dir / "infrastructuresList.json"
+        self.deployed_template_path = state_dir / "deployed-template.yaml"
+        self.authfile_path = state_dir / "authfile"
 
-        self.inf_list_path = resources_dir / "infrastructuresList.json"
-        self.deployed_template_path = resources_dir / "deployed-template.yaml"
-        self.authfile_path = resources_dir / "authfile"
-
-        # Check if the files exist
         if not self.inf_list_path.exists():
-            raise FileNotFoundError(f"File not found: {self.inf_list_path}")
+            self.inf_list_path.write_text(
+                json.dumps({"refresh_token": "", "infrastructures": []}, indent=4)
+            )
+
         if not self.deployed_template_path.exists():
-            raise FileNotFoundError(f"File not found: {self.deployed_template_path}")
+            self.deployed_template_path.touch()
+
+        if not self.authfile_path.exists():
+            self.authfile_path.write_text(
+                "id = im; type = InfrastructureManager; token = <token>\n"
+            )
 
     def load_json(self, path):
         """Load a JSON file and handle errors."""

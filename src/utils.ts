@@ -298,7 +298,8 @@ else:
 export async function getDeployedTemplatePath(
   ext: 'yaml' | 'json' | 'radl'
 ): Promise<string> {
-  return `resources/deployed-template.${ext}`;
+  await ensureInfrastructuresStateDir();
+  return `${infrastructuresStateDir}/deployed-template.${ext}`;
 }
 
 export async function getInfrastructuresListPath(): Promise<string> {
