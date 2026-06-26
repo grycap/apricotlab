@@ -13,11 +13,13 @@ import {
   getAccessTokenFromShareManager,
   persistAuthFile,
   writeTextFile,
+  getStateFilePath,
   createButton
 } from './utils';
 
 interface IDeployInfo {
   accessToken: any;
+  accessTokenSource: 'auto' | 'manual';
   recipe: string;
   id: string;
   deploymentType: string;
@@ -68,6 +70,7 @@ type UserInput = {
 
 interface IInfrastructureData {
   accessToken: string;
+  accessTokenSource: 'auto' | 'manual';
   name: string;
   infrastructureID: string;
   id: string;
@@ -84,6 +87,7 @@ interface IInfrastructureData {
 
 const deployInfo: IDeployInfo = {
   accessToken: '',
+  accessTokenSource: 'manual',
   recipe: '',
   id: '',
   deploymentType: '',
@@ -155,6 +159,7 @@ const resetDeployInfo = () => {
   deployInfo.domain = '';
   deployInfo.vo = '';
   deployInfo.accessToken = '';
+  deployInfo.accessTokenSource = 'manual';
 };
 
 const footerButtonContainer = document.createElement('div');
@@ -253,29 +258,6 @@ function appendVmImagesTitle(container: HTMLElement): void {
   title.textContent = 'VM Images';
   title.classList.add('form-instructions');
   container.appendChild(title);
-}
-
-function showManualAccessTokenInput(form: HTMLFormElement): void {
-  const existingInput = form.querySelector<HTMLInputElement>('#access_token');
-
-  if (existingInput) {
-    existingInput.required = true;
-    existingInput.focus();
-    return;
-  }
-
-  const input = addFormInput(
-    form,
-    'Access token:',
-    'access_token',
-    '',
-    'text',
-    undefined,
-    undefined,
-    'Paste your EGI access token'
-  );
-  input.required = true;
-  input.focus();
 }
 
 async function createImagesDropdown(
@@ -700,10 +682,11 @@ async function selectImage(obj: IDeployInfo): Promise<string> {
 from pathlib import Path
 import subprocess
 
-auth_file = Path.cwd() / ${JSON.stringify(authFilePath)}
+auth_file = Path(${JSON.stringify(authFilePath)})
 cmd = [
     "python3",
     ${JSON.stringify(imClientPath)},
+    "-q",
     "-a",
     str(auth_file),
     "-r",
@@ -734,13 +717,16 @@ async function deployIMCommand(
   const authFilePath = await getAuthFilePath();
 
   await writeTextFile(deployedTemplatePath, mergedTemplate);
+  const deployedTemplateKernelPath = await getStateFilePath(
+    `deployed-template.${format}`
+  );
 
   const cmd = `
 from pathlib import Path
 import subprocess
 
-auth_file = Path.cwd() / ${JSON.stringify(authFilePath)}
-template_file = Path.cwd() / ${JSON.stringify(deployedTemplatePath)}
+auth_file = Path(${JSON.stringify(authFilePath)})
+template_file = Path(${JSON.stringify(deployedTemplateKernelPath)})
 cmd = [
     "python3",
     ${JSON.stringify(imClientPath)},
@@ -967,6 +953,7 @@ const deployProviderCredentials = async (
   dialogBody.appendChild(form);
 
   let text = '';
+  let generatedAccessToken = '';
 
   switch (deployInfo.deploymentType) {
     case 'EC2': {
@@ -1018,6 +1005,41 @@ const deployProviderCredentials = async (
 
       addFormInput(form, 'VO:', 'vo', deployInfo.vo);
       addFormInput(form, 'Site name:', 'site', deployInfo.host);
+      const accessTokenInput = addFormInput(
+        form,
+        'Access token:',
+        'access_token',
+        '',
+        'text',
+        undefined,
+        undefined,
+        'Getting access token...'
+      );
+      accessTokenInput.disabled = true;
+
+      const tokenStatus = document.createElement('div');
+      tokenStatus.className = 'token-status';
+      const tokenLoader = document.createElement('div');
+      tokenLoader.className = 'mini-loader';
+      const tokenStatusText = document.createElement('span');
+      tokenStatusText.textContent = 'Getting access token...';
+      tokenStatus.appendChild(tokenLoader);
+      tokenStatus.appendChild(tokenStatusText);
+      form.appendChild(tokenStatus);
+
+      try {
+        generatedAccessToken = await getAccessTokenFromShareManager();
+        accessTokenInput.value = generatedAccessToken;
+        accessTokenInput.placeholder = '';
+        tokenStatus.remove();
+      } catch (error) {
+        console.warn('Could not get EGI access token automatically:', error);
+        accessTokenInput.placeholder = 'Paste your EGI access token';
+        tokenStatusText.textContent = 'Could not get token automatically.';
+        tokenLoader.remove();
+      } finally {
+        accessTokenInput.disabled = false;
+      }
       break;
   }
 
@@ -1068,22 +1090,15 @@ const deployProviderCredentials = async (
         deployInfo.host = getInputValue('site');
         deployInfo.vo = getInputValue('vo');
         deployInfo.accessToken = getInputValue('access_token').trim();
+        deployInfo.accessTokenSource =
+          generatedAccessToken && deployInfo.accessToken === generatedAccessToken
+            ? 'auto'
+            : 'manual';
 
-        if (deployInfo.accessToken) {
-          break;
-        }
-
-        nextButton.disabled = true;
-        try {
-          deployInfo.accessToken = await getAccessTokenFromShareManager();
-        } catch (error) {
-          console.error('Error getting EGI access token:', error);
-          showManualAccessTokenInput(form);
-          Notification.error(
-            'Could not get the EGI access token automatically. Please paste it manually.',
-            { autoClose: 5000 }
-          );
-          nextButton.disabled = false;
+        if (!deployInfo.accessToken) {
+          Notification.error('Please provide a valid EGI access token.', {
+            autoClose: 5000
+          });
           return;
         }
         break;
@@ -1464,6 +1479,7 @@ const handleFinalDeployOutput = async (
     // Create a JSON object for infrastructure data
     const infrastructureData: IInfrastructureData = {
       accessToken: deployInfo.accessToken,
+      accessTokenSource: deployInfo.accessTokenSource,
       name: deployInfo.infName,
       infrastructureID,
       id: deployInfo.id,

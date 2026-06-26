@@ -1,8 +1,4 @@
-import {
-  ContentsManager,
-  KernelManager,
-  ServerConnection
-} from '@jupyterlab/services';
+import { KernelManager } from '@jupyterlab/services';
 import { Notification } from '@jupyterlab/apputils';
 
 const infrastructuresStateDir = 'apricotlab_state';
@@ -13,27 +9,6 @@ const defaultAuthFileContent =
 
 let kernelManager: KernelManager | null = null;
 let kernel: any | null = null;
-const contentsManager = new ContentsManager();
-
-async function withTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs: number,
-  message: string
-): Promise<T> {
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
-  });
-
-  try {
-    return await Promise.race([promise, timeoutPromise]);
-  } finally {
-    if (timeout) {
-      clearTimeout(timeout);
-    }
-  }
-}
 
 // Get or start a new kernel (reused across all executions)
 export async function getOrStartKernel() {
@@ -102,69 +77,49 @@ async function getPath(
 }
 
 async function ensureInfrastructuresStateDir(): Promise<void> {
-  try {
-    await withTimeout(
-      contentsManager.get(infrastructuresStateDir, { content: false }),
-      5000,
-      `Timeout reading ${infrastructuresStateDir}`
-    );
-  } catch (error) {
-    const settings = ServerConnection.makeSettings();
-    const baseUrl = settings.baseUrl.endsWith('/')
-      ? settings.baseUrl
-      : `${settings.baseUrl}/`;
-    const stateDirUrl = `${baseUrl}api/contents/${encodeURIComponent(
-      infrastructuresStateDir
-    )}`;
+  const cmd = `
+from pathlib import Path
+import shutil
 
-    const response = await withTimeout(
-      ServerConnection.makeRequest(
-        stateDirUrl,
-        {
-          method: 'PUT',
-          body: JSON.stringify({ type: 'directory' }),
-          headers: { 'Content-Type': 'application/json' }
-        },
-        settings
-      ),
-      5000,
-      `Timeout creating ${infrastructuresStateDir}`
-    );
+state_name = ${JSON.stringify(infrastructuresStateDir)}
+state_dir = Path.home() / state_name
+state_dir.mkdir(exist_ok=True)
 
-    if (!response.ok && response.status !== 409) {
-      throw new Error(
-        `Failed to create ${infrastructuresStateDir}: ${response.status} ${response.statusText}`
-      );
-    }
-  }
+for legacy_dir in (Path.cwd() / state_name, Path.cwd().parent / state_name):
+    if legacy_dir.exists() and legacy_dir.resolve() != state_dir.resolve():
+        for legacy_file in legacy_dir.iterdir():
+            target = state_dir / legacy_file.name
+            if legacy_file.is_file() and not target.exists():
+                shutil.copy2(legacy_file, target)
+  `;
+  await executeKernelCommand(cmd);
 }
 
 async function writeInfrastructuresList(data: any): Promise<void> {
   await ensureInfrastructuresStateDir();
-  await withTimeout(
-    contentsManager.save(infrastructuresStatePath, {
-      type: 'file',
-      format: 'text',
-      content: JSON.stringify(data, null, 2)
-    }),
-    5000,
-    `Timeout writing ${infrastructuresStatePath}`
-  );
+  const cmd = `
+from pathlib import Path
+
+path = Path.home() / ${JSON.stringify(infrastructuresStatePath)}
+path.write_text(${JSON.stringify(JSON.stringify(data, null, 2))})
+  `;
+  await executeKernelCommand(cmd);
 }
 
 export async function readInfrastructuresList(): Promise<any> {
   try {
-    const file = await withTimeout(
-      contentsManager.get(infrastructuresStatePath, {
-        content: true
-      }),
-      5000,
-      `Timeout reading ${infrastructuresStatePath}`
-    );
-    const data =
-      typeof file.content === 'string'
-        ? JSON.parse(file.content)
-        : file.content;
+    await ensureInfrastructuresStateDir();
+    const cmd = `
+from pathlib import Path
+import json
+
+path = Path.home() / ${JSON.stringify(infrastructuresStatePath)}
+if not path.exists():
+    path.write_text(json.dumps({"refresh_token": "", "infrastructures": []}, indent=2))
+print(path.read_text())
+    `;
+    const content = await executeKernelCommand(cmd);
+    const data = JSON.parse(content);
 
     return {
       refresh_token: data?.refresh_token || '',
@@ -205,39 +160,36 @@ export async function removeInfrastructureFromList(
 
 export async function writeAuthFile(content: string): Promise<void> {
   await ensureInfrastructuresStateDir();
-  await withTimeout(
-    contentsManager.save(authFileStatePath, {
-      type: 'file',
-      format: 'text',
-      content
-    }),
-    5000,
-    `Timeout writing ${authFileStatePath}`
-  );
+  const cmd = `
+from pathlib import Path
+
+path = Path.home() / ${JSON.stringify(authFileStatePath)}
+path.write_text(${JSON.stringify(content)})
+  `;
+  await executeKernelCommand(cmd);
 }
 
 export async function writeTextFile(path: string, content: string): Promise<void> {
-  await withTimeout(
-    contentsManager.save(path, {
-      type: 'file',
-      format: 'text',
-      content
-    }),
-    5000,
-    `Timeout writing ${path}`
-  );
+  const cmd = `
+from pathlib import Path
+
+path = Path.home() / Path(${JSON.stringify(path)})
+path.parent.mkdir(exist_ok=True)
+path.write_text(${JSON.stringify(content)})
+  `;
+  await executeKernelCommand(cmd);
 }
 
 export async function readAuthFile(): Promise<string> {
   try {
-    const file = await withTimeout(
-      contentsManager.get(authFileStatePath, {
-        content: true
-      }),
-      5000,
-      `Timeout reading ${authFileStatePath}`
-    );
-    const content = typeof file.content === 'string' ? file.content : '';
+    await ensureInfrastructuresStateDir();
+    const cmd = `
+from pathlib import Path
+
+path = Path.home() / ${JSON.stringify(authFileStatePath)}
+print(path.read_text() if path.exists() else "")
+    `;
+    const content = await executeKernelCommand(cmd);
 
     if (content) {
       return content;
@@ -313,6 +265,7 @@ export async function getAccessTokenFromShareManager(): Promise<string> {
 
 export function buildAuthFileContent(obj: {
   accessToken?: string;
+  imAccessToken?: string;
   id: string;
   deploymentType?: string;
   type?: string;
@@ -329,7 +282,8 @@ export function buildAuthFileContent(obj: {
   const deploymentType = obj.deploymentType || obj.type || '';
   const username = obj.username || obj.user || '';
   const password = obj.password || obj.pass || '';
-  let authContent = `id = im; type = InfrastructureManager; token = ${obj.accessToken || ''};\n`;
+  const imAccessToken = obj.imAccessToken || obj.accessToken || '';
+  let authContent = `id = im; type = InfrastructureManager; token = ${imAccessToken};\n`;
   authContent += `id = ${obj.id}; type = ${deploymentType}; host = ${obj.host}; `;
 
   if (deploymentType === 'OpenNebula') {
@@ -346,6 +300,7 @@ export function buildAuthFileContent(obj: {
 
 export async function persistAuthFile(obj: {
   accessToken?: string;
+  imAccessToken?: string;
   id: string;
   deploymentType?: string;
   type?: string;
@@ -365,22 +320,9 @@ export async function persistAuthFile(obj: {
 function getStatePathCommand(statePath: string): string {
   return `
 from pathlib import Path
-import os
 
 state = Path(${JSON.stringify(statePath)})
-candidates = [
-    Path.cwd() / state,
-    Path.cwd().parent / state,
-    Path.home() / state,
-]
-
-for candidate in candidates:
-    if candidate.exists():
-        print(os.path.relpath(candidate.resolve(), Path.cwd().resolve()))
-        break
-else:
-    target = Path.home() / state
-    print(os.path.relpath(target, Path.cwd().resolve()))
+print(Path.home() / state)
   `;
 }
 
@@ -414,15 +356,20 @@ export async function getDeployedTemplatePath(
   return `${infrastructuresStateDir}/deployed-template.${ext}`;
 }
 
-export async function getInfrastructuresListPath(): Promise<string> {
-  await readInfrastructuresList();
-  const cmdInfrastructuresListPath = getStatePathCommand(
-    infrastructuresStatePath
+export async function getStateFilePath(fileName: string): Promise<string> {
+  await ensureInfrastructuresStateDir();
+  const cmdStateFilePath = getStatePathCommand(
+    `${infrastructuresStateDir}/${fileName}`
   );
   return getPath(
-    cmdInfrastructuresListPath,
-    'Failed to find apricotlab_state/infrastructuresList.json. Check the console for more details.'
+    cmdStateFilePath,
+    `Failed to find ${infrastructuresStateDir}/${fileName}. Check the console for more details.`
   );
+}
+
+export async function getInfrastructuresListPath(): Promise<string> {
+  await readInfrastructuresList();
+  return getStateFilePath('infrastructuresList.json');
 }
 
 export async function getDeployableTemplatesPath(): Promise<string> {
@@ -431,11 +378,7 @@ export async function getDeployableTemplatesPath(): Promise<string> {
 
 export async function getAuthFilePath(): Promise<string> {
   await readAuthFile();
-  const cmdTemplatesPath = getStatePathCommand(authFileStatePath);
-  return getPath(
-    cmdTemplatesPath,
-    'Failed to find apricotlab_state/authfile. Check the console for more details.'
-  );
+  return getStateFilePath('authfile');
 }
 
 export const createButton = (

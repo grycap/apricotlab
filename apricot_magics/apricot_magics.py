@@ -10,6 +10,7 @@ import time
 import os
 import json
 import sys
+import shutil
 
 IM_ENDPOINT = "https://im.egi.eu/im"
 
@@ -40,8 +41,18 @@ class Apricot_Magics(Magics):
     ########################
 
     def load_paths(self):
-        state_dir = Path.cwd() / "apricotlab_state"
+        state_dir = Path.home() / "apricotlab_state"
         state_dir.mkdir(exist_ok=True)
+
+        for legacy_dir in (
+            Path.cwd() / "apricotlab_state",
+            Path.cwd().parent / "apricotlab_state",
+        ):
+            if legacy_dir.exists() and legacy_dir.resolve() != state_dir.resolve():
+                for legacy_file in legacy_dir.iterdir():
+                    target = state_dir / legacy_file.name
+                    if legacy_file.is_file() and not target.exists():
+                        shutil.copy2(legacy_file, target)
 
         self.inf_list_path = state_dir / "infrastructuresList.json"
         self.deployed_template_path = state_dir / "deployed-template.yaml"
@@ -649,7 +660,7 @@ class Apricot_Magics(Magics):
             for line in lines:
                 if len(line) > 0:
                     result = self.apricot(line.strip())
-                    if result != "Done":
+                    if result not in ("Done", None):
                         print("Execution stopped")
                         return f"Fail on line: '{line.strip()}'"
             return "Done"
@@ -714,7 +725,7 @@ class Apricot_Magics(Magics):
 
                 self.cleanup_files("key.pem")
 
-                return "Done"
+                return None
 
         elif word1 == "list":
             return self.apricot_ls("")

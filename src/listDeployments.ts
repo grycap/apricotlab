@@ -16,6 +16,7 @@ interface IInfrastructure {
   IMuser: string;
   IMpass: string;
   accessToken: string;
+  accessTokenSource?: 'auto' | 'manual';
   name: string;
   infrastructureID: string;
   id: string;
@@ -102,28 +103,16 @@ async function deleteButton(
     const loader = document.createElement('div');
     loader.className = 'mini-loader';
     deleteButton.textContent = '';
+    deleteButton.disabled = true;
+    deleteButton.appendChild(loader);
 
     try {
       await refreshAndPersistListAuth([infrastructure]);
       const cmdDeploy = await destroyInfrastructure(infrastructureId);
 
-      deleteButton.appendChild(loader);
-
       const outputText = await executeKernelCommand(cmdDeploy);
 
-      if (outputText && outputText.includes('successfully destroyed')) {
-        row.remove();
-
-        Notification.success(
-          `Infrastructure ${infrastructureId} successfully destroyed.`,
-          {
-            autoClose: 5000
-          }
-        );
-        console.log(outputText);
-
-        await removeInfrastructureFromList(infrastructureId);
-      } else {
+      if (outputText?.toLowerCase().includes('error')) {
         Notification.error(
           'Error destroying infrastructure. Check the console for more details.',
           {
@@ -131,7 +120,20 @@ async function deleteButton(
           }
         );
         console.error('Error destroying infrastructure:', outputText);
+        return;
       }
+
+      row.remove();
+
+      Notification.success(
+        `Infrastructure ${infrastructureId} successfully destroyed.`,
+        {
+          autoClose: 5000
+        }
+      );
+      console.log(outputText);
+
+      await removeInfrastructureFromList(infrastructureId);
     } catch (error) {
       Notification.error(
         'Error destroying infrastructure. Check the console for more details.',
@@ -143,8 +145,11 @@ async function deleteButton(
       console.error('Error destroying infrastructure:', error);
     } finally {
       // Ensure that the loader is always removed after the try/catch block
-      deleteButton.removeChild(loader);
+      if (deleteButton.contains(loader)) {
+        deleteButton.removeChild(loader);
+      }
       deleteButton.textContent = 'Delete';
+      deleteButton.disabled = false;
     }
   });
 
@@ -199,7 +204,7 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
           error
         );
         stateCell.textContent = 'Error';
-        ipCell.textContent = 'Error';
+        ipCell.textContent = 'N/A';
       }
 
       const deleteBtn = await deleteButton(infrastructure, row);
@@ -235,13 +240,21 @@ async function refreshAndPersistListAuth(
 
   if (accessToken) {
     infrastructures
-      .filter(infrastructure => infrastructure.type === 'EGI')
+      .filter(
+        infrastructure =>
+          infrastructure.type === 'EGI' &&
+          infrastructure.accessTokenSource !== 'manual'
+      )
       .forEach(infrastructure => {
         infrastructure.accessToken = accessToken;
+        infrastructure.accessTokenSource = 'auto';
       });
   }
 
-  await persistAuthFile(egiInfrastructure || infrastructures[0]);
+  await persistAuthFile({
+    ...(egiInfrastructure || infrastructures[0]),
+    imAccessToken: accessToken || egiInfrastructure?.accessToken
+  });
 }
 
 async function getInfrastructureInfo(
@@ -262,10 +275,11 @@ async function getInfrastructureInfo(
 from pathlib import Path
 import subprocess
 
-auth_file = Path.cwd() / ${JSON.stringify(authFilePath)}
+auth_file = Path(${JSON.stringify(authFilePath)})
 cmd = [
     "python3",
     ${JSON.stringify(imClientPath)},
+    "-q",
     *${JSON.stringify(imArgs)},
     "-r",
     ${JSON.stringify(imEndpoint)},
@@ -282,6 +296,29 @@ if result.returncode != 0:
   return cmd;
 }
 
+function extractIpAddress(output: string): string {
+  const ipv4Matches = output.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g) || [];
+  const validIps = ipv4Matches.filter(ip =>
+    ip.split('.').every(octet => Number(octet) <= 255)
+  );
+
+  return validIps[validIps.length - 1] || 'N/A';
+}
+
+function extractInfrastructureState(output: string): string {
+  try {
+    const parsedOutput = JSON.parse(output);
+    if (typeof parsedOutput?.state === 'string') {
+      return parsedOutput.state;
+    }
+  } catch (error) {
+    // Fall back to parsing older, non-JSON IM client output.
+  }
+
+  const stateMatch = output.match(/\bstate\b\s*[:=]\s*"?([A-Za-z_-]+)"?/);
+  return stateMatch?.[1] || 'Error';
+}
+
 async function fetchInfrastructureData(
   infrastructure: IInfrastructure,
   dataType: 'state' | 'ip'
@@ -291,7 +328,7 @@ async function fetchInfrastructureData(
     const outputData = await executeKernelCommand(cmd);
 
     if (!outputData || outputData.trim() === '') {
-      return 'No Output';
+      return dataType === 'ip' ? 'N/A' : 'No Output';
     }
 
     console.log(`Received output for ${dataType}:`, outputData);
@@ -299,25 +336,19 @@ async function fetchInfrastructureData(
     let result: string;
 
     if (outputData.toLowerCase().includes('error')) {
-      result = outputData;
+      result = dataType === 'ip' ? 'N/A' : outputData;
     } else {
       if (dataType === 'state') {
-        const stateWords = outputData.trim().split(' ');
-        const stateIndex = stateWords.indexOf('state:');
-        result =
-          stateIndex !== -1 && stateIndex < stateWords.length - 1
-            ? stateWords[stateIndex + 1].trim()
-            : 'Error';
+        result = extractInfrastructureState(outputData);
       } else {
-        const ipWords = outputData.trim().split(' ');
-        result = ipWords[ipWords.length - 1] || 'Error';
+        result = extractIpAddress(outputData);
       }
     }
 
     return result;
   } catch (error) {
     console.error(`Error fetching ${dataType}:`, error);
-    return 'Error';
+    return dataType === 'ip' ? 'N/A' : 'Error';
   }
 }
 
@@ -331,11 +362,13 @@ async function destroyInfrastructure(
 from pathlib import Path
 import subprocess
 
-auth_file = Path.cwd() / ${JSON.stringify(authFilePath)}
+auth_file = Path(${JSON.stringify(authFilePath)})
 cmd = [
     "python3",
     ${JSON.stringify(imClientPath)},
+    "-q",
     "destroy",
+    "-y",
     ${JSON.stringify(infrastructureID)},
     "-a",
     str(auth_file),
