@@ -11,6 +11,7 @@ import os
 import json
 import sys
 import shutil
+import re
 
 IM_ENDPOINT = "https://im.egi.eu/im"
 
@@ -438,101 +439,80 @@ class Apricot_Magics(Magics):
             )
         )
 
+    def get_raw_infrastructure_info(self, inf_id):
+        try:
+            self.initialize_im_client()
+            success, inf_info = self.client.getinfo(inf_id)
+            return list(inf_info)
+
+        except Exception as e:
+            print(f"Error: {e}")
+            return None
+
+    @line_magic
+    def apricot_radl(self, line):
+        if not line:
+            return "Usage: `%apricot_radl infrastructure-id`\n"
+
+        inf_id = line.split()[0]
+        inf_info_items = self.get_raw_infrastructure_info(inf_id)
+
+        if inf_info_items is None:
+            return "Failed"
+
+        for item in inf_info_items:
+            print(*item, sep="\n")
+
     @line_magic
     def apricot_info(self, line):
         if not line:
             return "Usage: `%apricot_info infrastructure-id`\n"
 
         inf_id = line.split()[0]
+        inf_info_items = self.get_raw_infrastructure_info(inf_id)
 
-        try:
-            self.initialize_im_client()
-            success, inf_info = self.client.getinfo(inf_id)
-
-        except Exception as e:
-            print(f"Error: {e}")
+        if inf_info_items is None:
             return "Failed"
 
-        for item in inf_info:
-            print(*item, sep="\n")
-
-        # @line_magic
-        # def apricot_vmls(self, line):
-        if not line:
-            print("Usage: `%apricot_vmls infrastructure-id`\n")
-            return "Fail"
-
-        inf_id = line.split()[0]
         vm_info_list = []
 
-        try:
-            self.initialize_im_client()
-            success, inf_info = self.client.getinfo(inf_id)
+        def extract_property(output, names, operators=("=", ">=")):
+            for name in names:
+                for operator in operators:
+                    pattern = rf"{re.escape(name)}\s*{re.escape(operator)}\s*'([^']*)'"
+                    match = re.search(pattern, output)
+                    if match:
+                        return match.group(1).split()[0]
 
-        except Exception as e:
-            print(f"Error: {e}")
-            return "Failed"
+                    pattern = rf"{re.escape(name)}\s*{re.escape(operator)}\s*([^\s\n]+)"
+                    match = re.search(pattern, output)
+                    if match:
+                        return match.group(1).strip("'")
 
-        for item in inf_info:
+            return "N/A"
+
+        for item in inf_info_items:
             vm_id = item[0]
-            (
-                net_interface_ip,
-                provider_type,
-                disk_size,
-                cpu_count,
-                memory_size,
-                gpu_count,
-            ) = (None, None, None, None, None, None)
+            output_string = item[2] if len(item) > 2 else ""
 
-            output_string = item[
-                2
-            ]  # The third element contains the VM details as a string
-            for line in output_string.split("\n"):
-                if "net_interface.0.ip =" in line:
-                    net_interface_ip = (
-                        line.split("= ")[1].strip().replace("'", "").split(" ")[0]
-                    )
-                if "provider.type =" in line:
-                    provider_type = (
-                        line.split("= ")[1].strip().replace("'", "").split(" ")[0]
-                    )
-                if "disk.0.size >=" in line:
-                    disk_size = line.split(">= ")[1].strip().strip("'").split(" ")[0]
-                if "cpu.count =" in line:
-                    cpu_count = line.split("= ")[1].strip().strip("'").split(" ")[0]
-                if "memory.size =" in line:
-                    memory_size = line.split("= ")[1].strip().strip("'").split(" ")[0]
-                if "gpu.count >=" in line:
-                    gpu_count = line.split(">= ")[1].strip().strip("'").split(" ")[0]
-
-            start_time = time.time()
-            while not all(
-                (
+            vm_info_list.append(
+                [
                     vm_id,
-                    net_interface_ip,
-                    provider_type,
-                    disk_size,
-                    cpu_count,
-                    memory_size,
-                    memory_size,
-                )
-            ):  # Ensure valid values
-                if time.time() - start_time > 4:
-                    break
-                # time.sleep(1)
+                    extract_property(
+                        output_string,
+                        ["net_interface.1.ip", "net_interface.0.ip", "node_ip"],
+                    ),
+                    extract_property(output_string, ["provider.type"]),
+                    extract_property(output_string, ["disk.0.size"]),
+                    extract_property(output_string, ["cpu.count"]),
+                    extract_property(output_string, ["memory.size"]),
+                    extract_property(output_string, ["gpu.count"]),
+                ]
+            )
 
-                # if all((vm_id, net_interface_ip, provider_type, disk_size, cpu_count, memory_size, gpu_count)):
-                vm_info_list.append(
-                    [
-                        vm_id,
-                        net_interface_ip,
-                        provider_type,
-                        disk_size,
-                        cpu_count,
-                        memory_size,
-                        gpu_count,
-                    ]
-                )
+        if not vm_info_list:
+            print("No VM information found.")
+            return
 
         # Print table
         print(

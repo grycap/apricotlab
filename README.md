@@ -67,6 +67,12 @@ jupyter labextension list
 
 When installing from a published wheel, Node.js and `jlpm` are not required.
 
+## 🔐 Access Tokens on EGI Notebooks
+
+When APRICOTLab runs inside EGI Notebooks, the deployment wizard tries to obtain an EGI access token automatically and fills the access token field for you.
+
+You can still edit that field manually before deploying. This is useful when a target site does not support the automatically generated token or requires a different token for that specific site.
+
 ## ✨ IPython Magics for Infrastructure Management
 
 The extension provides a set of custom IPython magic commands for interacting with deployed infrastructures:
