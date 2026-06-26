@@ -147,7 +147,7 @@ cd apricotlab
 pip install -e .
 
 # Link the extension to JupyterLab
-jupyter labextension develop . --overwrite
+jupyter-builder develop . --overwrite
 
 # Build the extension
 jlpm build
@@ -178,7 +178,7 @@ jupyter lab build --minimize=False
 pip uninstall apricot
 ```
 
-You should also remove the symlink created with `jupyter labextension develop`. Run:
+You should also remove the symlink created with `jupyter-builder develop`. Run:
 
 ```bash
 jupyter labextension list
