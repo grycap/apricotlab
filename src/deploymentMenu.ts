@@ -5,12 +5,14 @@ import { Widget } from '@lumino/widgets';
 import { Dialog, Notification } from '@jupyterlab/apputils';
 
 import {
+  appendInfrastructureToList,
   executeKernelCommand,
   getDeployableTemplatesPath,
-  getInfrastructuresListPath,
   getIMClientPath,
   getDeployedTemplatePath,
   getAuthFilePath,
+  writeAuthFile,
+  writeTextFile,
   createButton
 } from './utils';
 
@@ -555,17 +557,18 @@ async function createImageDropdown(
 }
 
 async function loadRecipeInputs(recipe: string): Promise<any | null> {
+  const recipeFileName = getMainRecipeFileName(recipe);
+  let templatePath = recipeFileName;
+
   try {
     const templatesPath = await getDeployableTemplatesPath();
-    const recipeFileName = getMainRecipeFileName(recipe);
-    const file = await contentsManager.get(
-      `${templatesPath}/${recipeFileName}`
-    );
+    templatePath = `${templatesPath}/${recipeFileName}`;
+    const file = await contentsManager.get(templatePath);
     const yamlContent = file.content as string;
     const yamlData: any = jsyaml.load(yamlContent);
     return yamlData?.topology_template?.inputs || null;
   } catch (error) {
-    console.error('Failed to load recipe inputs:', error);
+    console.error(`Failed to load recipe inputs from ${templatePath}:`, error);
     return null;
   }
 }
@@ -634,7 +637,7 @@ async function collectUserInputsFromForm(
 }
 
 //*********************//
-//*   Bash commands   *//
+//*  Kernel commands  *//
 //*********************//
 
 async function selectImage(obj: IDeployInfo): Promise<string> {
@@ -652,20 +655,29 @@ async function selectImage(obj: IDeployInfo): Promise<string> {
   } else if (obj.deploymentType === 'EGI') {
     authContent += ` vo = ${obj.vo}; token = ${obj.accessToken}`;
   }
+  authContent += '\n';
 
-  const cmd = `%%bash
-            PWD=$(pwd)
-            # Overwrite the auth file with new content
-            echo -e "${authContent}" > $PWD/${authFilePath}
-            # Create final command where the output is stored in "imageOut"
-            imageOut=$(python3 ${imClientPath} -a $PWD/${authFilePath} -r ${imEndpoint} cloudimages ${obj.id})
-            # Print IM output on stderr or stdout
-            if [ $? -ne 0 ]; then
-                >&2 echo -e $imageOut
-                exit 1
-            else
-                echo -e $imageOut
-            fi
+  await writeAuthFile(authContent);
+
+  const cmd = `
+from pathlib import Path
+import subprocess
+
+auth_file = Path.cwd() / ${JSON.stringify(authFilePath)}
+cmd = [
+    "python3",
+    ${JSON.stringify(imClientPath)},
+    "-a",
+    str(auth_file),
+    "-r",
+    ${JSON.stringify(imEndpoint)},
+    "cloudimages",
+    ${JSON.stringify(obj.id)},
+]
+result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+print(result.stdout)
+if result.returncode != 0:
+    raise RuntimeError(result.stdout)
           `;
 
   // console.log('Get cloud images:', cmd);
@@ -684,22 +696,28 @@ async function deployIMCommand(
   const imClientPath = await getIMClientPath();
   const authFilePath = await getAuthFilePath();
 
-  const cmd = `%%bash
-PWD=$(pwd)
+  await writeTextFile(deployedTemplatePath, mergedTemplate);
 
-# Save mergedTemplate in a file
-cat << 'EOF' > ${deployedTemplatePath}
-${mergedTemplate}
-EOF
-# Run IM CLI to deploy using the shared auth file
-imageOut=$(python3 ${imClientPath} -a $PWD/${authFilePath} create ${deployedTemplatePath} -r ${imEndpoint})
-# Print IM output on stderr or stdout
-if [ $? -ne 0 ]; then
-    >&2 echo -e $imageOut
-    exit 1
-else
-    echo -e $imageOut
-fi
+  const cmd = `
+from pathlib import Path
+import subprocess
+
+auth_file = Path.cwd() / ${JSON.stringify(authFilePath)}
+template_file = Path.cwd() / ${JSON.stringify(deployedTemplatePath)}
+cmd = [
+    "python3",
+    ${JSON.stringify(imClientPath)},
+    "-a",
+    str(auth_file),
+    "create",
+    str(template_file),
+    "-r",
+    ${JSON.stringify(imEndpoint)},
+]
+result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+print(result.stdout)
+if result.returncode != 0:
+    raise RuntimeError(result.stdout)
 `;
 
   console.log('TOSCA recipe deployed:', cmd);
@@ -708,19 +726,9 @@ fi
 
 async function saveToInfrastructureList(
   obj: IInfrastructureData
-): Promise<string> {
-  const infrastructuresListPath = await getInfrastructuresListPath();
-
-  // Bash command to update the infrastructuresList JSON
-  const cmd = `%%bash
-              PWD=$(pwd)
-              existingJson=$(cat ${infrastructuresListPath})
-              newJson=$(echo "$existingJson" | jq -c '.infrastructures += [${JSON.stringify(obj)}]')
-              echo "$newJson" > ${infrastructuresListPath}
-           `;
-
-  console.log('Credentials saved to infrastructuresList.json:', cmd);
-  return cmd;
+): Promise<void> {
+  await appendInfrastructureToList(obj);
+  console.log('Data saved to infrastructuresList.json:', obj);
 }
 
 //****************//
@@ -1067,7 +1075,91 @@ async function deployInfraConfiguration(
     'text'
   );
 
-  const inputs = await loadRecipeInputs(deployInfo.recipe);
+  let inputs: any | null = null;
+
+  const buttonContainer = document.createElement('div');
+  buttonContainer.className = 'footer-button-container';
+  dialogBody.appendChild(buttonContainer);
+
+  const backBtn = createButton('Back', () =>
+    deployProviderCredentials(dialogBody)
+  );
+  buttonContainer.appendChild(backBtn);
+
+  const nextBtn = createButton(
+    deployInfo.recipe === 'simple node disk' && deployInfo.childs.length === 0
+      ? 'Deploy'
+      : 'Next',
+    async () => {
+      try {
+        const infNameElement =
+          form.querySelector<HTMLInputElement>('#infNameInput');
+        if (infNameElement) {
+          deployInfo.infName = infNameElement.value.trim();
+        }
+
+        const imageDropdown = document.getElementById(
+          'imageDropdown'
+        ) as HTMLSelectElement;
+        if (imageDropdown) {
+          deployInfo.image = imageDropdown.value;
+        }
+
+        const allInputs = form.querySelectorAll<
+          HTMLInputElement | HTMLSelectElement
+        >('input, select');
+        allInputs.forEach(input => {
+          if (input.id === 'infNameInput') {
+            return;
+          }
+
+          const inputName = input.name;
+          const originalInputDef = inputs?.[inputName];
+          const type = originalInputDef?.type;
+
+          let value: any = input.value.trim();
+
+          if (value === '') {
+            return;
+          }
+
+          if (type === 'integer') {
+            value = parseInt(value, 10);
+          } else if (type === 'float') {
+            value = parseFloat(value);
+          }
+
+          if (originalInputDef) {
+            originalInputDef.default = value;
+          }
+          deployInfo.inputs[inputName] = value;
+
+          // console.log(`Updated: '${inputName}' = ${value}`);
+        });
+
+        // console.log('All deployInfo.inputs:', deployInfo.inputs);
+
+        if (
+          deployInfo.recipe === 'simple node disk' &&
+          deployInfo.childs.length === 0
+        ) {
+          await deployFinalRecipe(dialogBody);
+        } else {
+          await deployChildsConfiguration(dialogBody);
+        }
+      } catch (error) {
+        console.error('Error in deployment process:', error);
+        Notification.error(
+          'Check for correct provider credentials before continuing.',
+          { autoClose: 5000 }
+        );
+      }
+    }
+  );
+  nextBtn.disabled = true;
+  buttonContainer.appendChild(nextBtn);
+
+  inputs = await loadRecipeInputs(deployInfo.recipe);
 
   if (inputs) {
     // Create form inputs for frontend and worker nodes
@@ -1124,92 +1216,15 @@ async function deployInfraConfiguration(
       });
   } else {
     const noInputsMessage = document.createElement('p');
-    noInputsMessage.textContent = 'No frontend or worker node inputs found.';
+    noInputsMessage.textContent = 'No inputs found.';
     form.appendChild(noInputsMessage);
   }
 
-  const buttonContainer = document.createElement('div');
-  buttonContainer.className = 'footer-button-container';
-  dialogBody.appendChild(buttonContainer);
-
-  const backBtn = createButton('Back', () =>
-    deployProviderCredentials(dialogBody)
-  );
-  buttonContainer.appendChild(backBtn);
-
-  const nextBtn = createButton(
-    deployInfo.recipe === 'simple node disk' && deployInfo.childs.length === 0
-      ? 'Deploy'
-      : 'Next',
-    async () => {
-      try {
-        const infNameElement =
-          form.querySelector<HTMLInputElement>('#infNameInput');
-        if (infNameElement) {
-          deployInfo.infName = infNameElement.value.trim();
-        }
-
-        const imageDropdown = document.getElementById(
-          'imageDropdown'
-        ) as HTMLSelectElement;
-        if (imageDropdown) {
-          deployInfo.image = imageDropdown.value;
-        }
-
-        const allInputs = form.querySelectorAll<
-          HTMLInputElement | HTMLSelectElement
-        >('input, select');
-        allInputs.forEach(input => {
-          if (input.id === 'infNameInput') {
-            return;
-          }
-
-          const inputName = input.name;
-          const originalInputDef = inputs?.[inputName];
-          const type = originalInputDef?.type;
-
-          let value: any = input.value.trim();
-
-          if (value === '') {
-            return;
-          }
-
-          if (type === 'integer') {
-            value = parseInt(value, 10);
-          } else if (type === 'float') {
-            value = parseFloat(value);
-          }
-
-          originalInputDef.default = value;
-          deployInfo.inputs[inputName] = value;
-
-          // console.log(`Updated: '${inputName}' = ${value}`);
-        });
-
-        // console.log('All deployInfo.inputs:', deployInfo.inputs);
-
-        if (
-          deployInfo.recipe === 'simple node disk' &&
-          deployInfo.childs.length === 0
-        ) {
-          await deployFinalRecipe(dialogBody);
-        } else {
-          await deployChildsConfiguration(dialogBody);
-        }
-      } catch (error) {
-        console.error('Error in deployment process:', error);
-        Notification.error(
-          'Check for correct provider credentials before continuing.',
-          { autoClose: 5000 }
-        );
-      }
-    }
-  );
-
   if (deployInfo.deploymentType !== 'EC2') {
     nextBtn.disabled = true;
+  } else {
+    nextBtn.disabled = false;
   }
-  buttonContainer.appendChild(nextBtn);
 
   if (deployInfo.deploymentType !== 'EC2') {
     const dropdownContainer = document.createElement('div');
@@ -1423,14 +1438,10 @@ const handleFinalDeployOutput = async (
       custom: deployInfo.custom
     };
 
-    const cmdSave = await saveToInfrastructureList(infrastructureData);
-
-    // Execute kernel command to save the data
     try {
-      const outputText = await executeKernelCommand(cmdSave);
-      console.log('Data saved to infrastructuresList.json:', outputText);
+      await saveToInfrastructureList(infrastructureData);
     } catch (error) {
-      console.error('Error executing kernel command:', error);
+      console.error('Error saving infrastructure data:', error);
       deploying = false;
     }
     resetDeployInfo();

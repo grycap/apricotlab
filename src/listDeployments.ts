@@ -1,12 +1,12 @@
 import { Dialog, Notification } from '@jupyterlab/apputils';
 import { Widget } from '@lumino/widgets';
 import {
-  getInfrastructuresListPath,
   getIMClientPath,
   createButton,
   getAuthFilePath,
   executeKernelCommand,
-  getOrStartKernel
+  readInfrastructuresList,
+  removeInfrastructureFromList
 } from './utils';
 
 interface IInfrastructure {
@@ -118,8 +118,7 @@ async function deleteButton(
         );
         console.log(outputText);
 
-        const cmdDeleteInfra = await removeInfraFromList(infrastructureId);
-        await executeKernelCommand(cmdDeleteInfra);
+        await removeInfrastructureFromList(infrastructureId);
       } else {
         Notification.error(
           'Error destroying infrastructure. Check the console for more details.',
@@ -149,53 +148,17 @@ async function deleteButton(
 }
 
 async function populateTable(table: HTMLTableElement): Promise<void> {
-  let jsonData: string | null = null;
-  const infrastructuresListPath = await getInfrastructuresListPath();
-  console.log('infrastructuresListPath:', infrastructuresListPath);
-
-  const kernel = await getOrStartKernel();
-
-  try {
-    // Read infrastructuresList.json
-    const cmdReadJson = `%%bash
-                          cat "${infrastructuresListPath}"`;
-    const futureReadJson = kernel.requestExecute({ code: cmdReadJson });
-
-    futureReadJson.onIOPub = (msg: any) => {
-      const content = msg.content as any;
-      if (content && content.text) {
-        jsonData = (jsonData || '') + content.text;
-      }
-    };
-
-    await futureReadJson.done;
-
-    if (!jsonData) {
-      throw new Error('infrastructuresList.json does not exist in the path.');
-    }
-  } catch (error) {
-    console.error('Error reading or parsing infrastructuresList.json:', error);
-    Notification.error(
-      'Error reading or parsing infrastructuresList.json. Check the console for more details.',
-      {
-        autoClose: 5000
-      }
-    );
-  }
-
-  // Parse the JSON data
   let infrastructures: IInfrastructure[] = [];
   try {
-    if (jsonData) {
-      infrastructures = JSON.parse(jsonData).infrastructures;
-    }
+    const data = await readInfrastructuresList();
+    infrastructures = data.infrastructures;
   } catch (error) {
     console.error(
-      'Error parsing JSON data from infrastructuresList.json:',
+      'Error reading or parsing infrastructuresList.json:',
       error
     );
     Notification.error(
-      'Error parsing JSON data from infrastructuresList.json. Check the console for more details.',
+      'Error reading or parsing infrastructuresList.json. Check the console for more details.',
       {
         autoClose: 5000
       }
@@ -248,20 +211,29 @@ async function getInfrastructureInfo(
   const imClientPath = await getIMClientPath();
   const authFilePath = await getAuthFilePath();
 
-  const cmd = `%%bash
-                PWD=$(pwd)
-                if [ "${dataType}" = "state" ]; then
-                    stateOut=$(python3 ${imClientPath} getstate ${infrastructureID} -r ${imEndpoint} -a $PWD/${authFilePath})
-                else
-                    stateOut=$(python3 ${imClientPath} getvminfo ${infrastructureID} 0 net_interface.1.ip -r ${imEndpoint} -a $PWD/${authFilePath})
-                fi
-                # Print state output on stderr or stdout
-                if [ $? -ne 0 ]; then
-                    >&2 echo -e $stateOut
-                    exit 1
-                else
-                    echo -e $stateOut
-                fi
+  const imArgs =
+    dataType === 'state'
+      ? ['getstate', infrastructureID]
+      : ['getvminfo', infrastructureID, '0', 'net_interface.1.ip'];
+
+  const cmd = `
+from pathlib import Path
+import subprocess
+
+auth_file = Path.cwd() / ${JSON.stringify(authFilePath)}
+cmd = [
+    "python3",
+    ${JSON.stringify(imClientPath)},
+    *${JSON.stringify(imArgs)},
+    "-r",
+    ${JSON.stringify(imEndpoint)},
+    "-a",
+    str(auth_file),
+]
+result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+print(result.stdout)
+if result.returncode != 0:
+    raise RuntimeError(result.stdout)
               `;
 
   console.log(`Get ${dataType} command: `, cmd);
@@ -313,37 +285,29 @@ async function destroyInfrastructure(
   const imClientPath = await getIMClientPath();
   const authFilePath = await getAuthFilePath();
 
-  const cmd = `%%bash
-            PWD=$(pwd)
-            # Create final command where the output is stored in "destroyOut"
-            destroyOut=$(python3 ${imClientPath} destroy ${infrastructureID} -a $PWD/${authFilePath} -r ${imEndpoint})
-            # Print IM output on stderr or stdout
-            if [ $? -ne 0 ]; then
-                >&2 echo -e $destroyOut
-                exit 1
-            else
-                echo -e $destroyOut
-            fi
+  const cmd = `
+from pathlib import Path
+import subprocess
+
+auth_file = Path.cwd() / ${JSON.stringify(authFilePath)}
+cmd = [
+    "python3",
+    ${JSON.stringify(imClientPath)},
+    "destroy",
+    ${JSON.stringify(infrastructureID)},
+    "-a",
+    str(auth_file),
+    "-r",
+    ${JSON.stringify(imEndpoint)},
+]
+result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+print(result.stdout)
+if result.returncode != 0:
+    raise RuntimeError(result.stdout)
           `;
 
   console.log(cmd);
   return cmd;
-}
-
-async function removeInfraFromList(infrastructureID: string): Promise<string> {
-  const infrastructuresListPath = await getInfrastructuresListPath();
-
-  // Create a Bash command to remove the infrastructure from the JSON file
-  const cmdDeleteInfra = `
-    %%bash
-    PWD=$(pwd)
-    existingJson=$(cat ${infrastructuresListPath})
-    newJson=$(echo "$existingJson" | jq -c 'del(.infrastructures[] | select(.infrastructureID == "${infrastructureID}"))')
-    echo "$newJson" > ${infrastructuresListPath}
-  `;
-
-  console.log(`Bash Command: ${cmdDeleteInfra}`);
-  return cmdDeleteInfra;
 }
 
 export { openListDeploymentsDialog };
