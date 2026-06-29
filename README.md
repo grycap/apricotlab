@@ -67,6 +67,12 @@ jupyter labextension list
 
 When installing from a published wheel, Node.js and `jlpm` are not required.
 
+## 🔐 Access Tokens on EGI Notebooks
+
+When APRICOTLab runs inside EGI Notebooks, the deployment wizard tries to obtain an EGI access token automatically and fills the access token field for you.
+
+You can still edit that field manually before deploying. This is useful when a target site does not support the automatically generated token or requires a different token for that specific site.
+
 ## ✨ IPython Magics for Infrastructure Management
 
 The extension provides a set of custom IPython magic commands for interacting with deployed infrastructures:
@@ -147,7 +153,7 @@ cd apricotlab
 pip install -e .
 
 # Link the extension to JupyterLab
-jupyter labextension develop . --overwrite
+jupyter-builder develop . --overwrite
 
 # Build the extension
 jlpm build
@@ -178,7 +184,7 @@ jupyter lab build --minimize=False
 pip uninstall apricot
 ```
 
-You should also remove the symlink created with `jupyter labextension develop`. Run:
+You should also remove the symlink created with `jupyter-builder develop`. Run:
 
 ```bash
 jupyter labextension list

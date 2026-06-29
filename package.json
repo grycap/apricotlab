@@ -19,7 +19,8 @@
     "files": [
         "lib/**/*.{d.ts,eot,gif,html,jpg,js,js.map,json,png,svg,woff2,ttf}",
         "style/**/*.{css,js,eot,gif,html,jpg,json,png,svg,woff2,ttf}",
-        "src/**/*.{ts,tsx}"
+        "src/**/*.{ts,tsx}",
+        "resources/**/*"
     ],
     "main": "lib/index.js",
     "types": "lib/index.d.ts",
@@ -31,8 +32,9 @@
     "scripts": {
         "build": "jlpm build:lib && jlpm build:labextension:dev",
         "build:prod": "jlpm clean && jlpm build:lib:prod && jlpm build:labextension",
-        "build:labextension": "jupyter labextension build .",
-        "build:labextension:dev": "jupyter labextension build --development True .",
+        "build:labextension": "jupyter labextension build . && jlpm copy:resources",
+        "build:labextension:dev": "jupyter labextension build --development True . && jlpm copy:resources",
+        "copy:resources": "node -e \"const fs=require('fs');fs.rmSync('apricot/labextension/resources',{recursive:true,force:true});fs.cpSync('resources','apricot/labextension/resources',{recursive:true});\"",
         "build:lib": "tsc --sourceMap",
         "build:lib:prod": "tsc",
         "clean": "jlpm clean:lib",

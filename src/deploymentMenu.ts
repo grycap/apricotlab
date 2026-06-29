@@ -1,21 +1,25 @@
 import * as jsyaml from 'js-yaml';
 
-import { ContentsManager } from '@jupyterlab/services';
+import { ServerConnection } from '@jupyterlab/services';
 import { Widget } from '@lumino/widgets';
 import { Dialog, Notification } from '@jupyterlab/apputils';
 
 import {
+  appendInfrastructureToList,
   executeKernelCommand,
-  getDeployableTemplatesPath,
-  getInfrastructuresListPath,
   getIMClientPath,
   getDeployedTemplatePath,
   getAuthFilePath,
+  getAccessTokenFromShareManager,
+  persistAuthFile,
+  writeTextFile,
+  getStateFilePath,
   createButton
 } from './utils';
 
 interface IDeployInfo {
   accessToken: any;
+  accessTokenSource: 'auto' | 'manual';
   recipe: string;
   id: string;
   deploymentType: string;
@@ -66,6 +70,7 @@ type UserInput = {
 
 interface IInfrastructureData {
   accessToken: string;
+  accessTokenSource: 'auto' | 'manual';
   name: string;
   infrastructureID: string;
   id: string;
@@ -82,6 +87,7 @@ interface IInfrastructureData {
 
 const deployInfo: IDeployInfo = {
   accessToken: '',
+  accessTokenSource: 'manual',
   recipe: '',
   id: '',
   deploymentType: '',
@@ -153,12 +159,11 @@ const resetDeployInfo = () => {
   deployInfo.domain = '';
   deployInfo.vo = '';
   deployInfo.accessToken = '';
+  deployInfo.accessTokenSource = 'manual';
 };
 
 const footerButtonContainer = document.createElement('div');
 footerButtonContainer.className = 'footer-button-container';
-
-const contentsManager = new ContentsManager();
 
 let imageOptions: { uri: string; name: string }[] = [];
 
@@ -234,7 +239,7 @@ const addFormInput = (
 
 function getInputValue(inputId: string): string {
   const input = document.getElementById(inputId) as HTMLInputElement;
-  return input.value;
+  return input?.value || '';
 }
 
 function detectRecipeFormat(content: string): 'radl' | 'yaml' | 'json' {
@@ -246,6 +251,13 @@ function detectRecipeFormat(content: string): 'radl' | 'yaml' | 'json' {
     return 'yaml';
   }
   return 'radl';
+}
+
+function appendVmImagesTitle(container: HTMLElement): void {
+  const title = document.createElement('p');
+  title.textContent = 'VM Images';
+  title.classList.add('form-instructions');
+  container.appendChild(title);
 }
 
 async function createImagesDropdown(
@@ -287,9 +299,10 @@ async function createImagesDropdown(
 
     // Clear the dropdown container before appending new content
     dropdownContainer.innerHTML = '';
+    appendVmImagesTitle(dropdownContainer);
 
     const label = document.createElement('label');
-    label.textContent = 'Images:';
+    label.textContent = 'Image:';
     label.classList.add('images-label');
     dropdownContainer.appendChild(label);
 
@@ -413,19 +426,49 @@ function getMainRecipeFileName(recipeName: string): string {
   return mainRecipeMap[normalized] ?? normalized.replace(/\s+/g, '_') + '.yaml';
 }
 
+async function loadRecipeYaml(recipeName: string): Promise<string> {
+  const recipeFileName = getMainRecipeFileName(recipeName);
+  const settings = ServerConnection.makeSettings();
+  const baseUrl = settings.baseUrl.endsWith('/')
+    ? settings.baseUrl
+    : `${settings.baseUrl}/`;
+  const recipeUrl = `${baseUrl}lab/extensions/apricot/resources/deployable_templates/${encodeURIComponent(
+    recipeFileName
+  )}`;
+
+  try {
+    const response = await ServerConnection.makeRequest(
+      recipeUrl,
+      { method: 'GET' },
+      settings
+    );
+
+    if (!response.ok) {
+      throw new Error(`${response.status} ${response.statusText}`);
+    }
+
+    return await response.text();
+  } catch (extensionError) {
+    console.error(
+      `Failed to load recipe template '${recipeFileName}' from extension URL '${recipeUrl}'.`,
+      extensionError
+    );
+    throw extensionError;
+  }
+}
+
+async function loadRecipeTemplate(recipeName: string): Promise<any> {
+  const yamlContent = await loadRecipeYaml(recipeName);
+  return jsyaml.load(yamlContent);
+}
+
 async function createChildsForm(
   childName: string,
   index: number,
   deployDialog: HTMLElement,
   buttonsContainer: HTMLElement
 ) {
-  const templatesPath = await getDeployableTemplatesPath();
-
-  const recipeFileName = getMainRecipeFileName(childName);
-  const file = await contentsManager.get(`${templatesPath}/${recipeFileName}`);
-
-  const yamlContent = file.content as string;
-  const yamlData: any = jsyaml.load(yamlContent);
+  const yamlData: any = await loadRecipeTemplate(childName);
   const metadata = yamlData.metadata;
   const templateName = metadata.template_name;
   const inputs = yamlData.topology_template.inputs;
@@ -534,6 +577,8 @@ async function createImageDropdown(
   dropdownContainer: HTMLElement,
   nextBtn: HTMLButtonElement
 ): Promise<void> {
+  appendVmImagesTitle(dropdownContainer);
+
   const loader = document.createElement('div');
   loader.className = 'mini-loader';
   dropdownContainer.appendChild(loader);
@@ -556,16 +601,10 @@ async function createImageDropdown(
 
 async function loadRecipeInputs(recipe: string): Promise<any | null> {
   try {
-    const templatesPath = await getDeployableTemplatesPath();
-    const recipeFileName = getMainRecipeFileName(recipe);
-    const file = await contentsManager.get(
-      `${templatesPath}/${recipeFileName}`
-    );
-    const yamlContent = file.content as string;
-    const yamlData: any = jsyaml.load(yamlContent);
+    const yamlData: any = await loadRecipeTemplate(recipe);
     return yamlData?.topology_template?.inputs || null;
   } catch (error) {
-    console.error('Failed to load recipe inputs:', error);
+    console.error(`Failed to load recipe inputs for ${recipe}:`, error);
     return null;
   }
 }
@@ -576,11 +615,7 @@ async function collectUserInputsFromForm(
   nodeTemplates: any,
   outputs: any
 ): Promise<UserInput | null> {
-  const templatesPath = await getDeployableTemplatesPath();
-  const recipeFileName = getMainRecipeFileName(childName);
-  const file = await contentsManager.get(`${templatesPath}/${recipeFileName}`);
-  const yamlContent = file.content as string;
-  const yamlData: any = jsyaml.load(yamlContent);
+  const yamlData: any = await loadRecipeTemplate(childName);
   const recipeInputs = yamlData.topology_template.inputs;
 
   if (!recipeInputs) {
@@ -634,38 +669,35 @@ async function collectUserInputsFromForm(
 }
 
 //*********************//
-//*   Bash commands   *//
+//*  Kernel commands  *//
 //*********************//
 
 async function selectImage(obj: IDeployInfo): Promise<string> {
   const imClientPath = await getIMClientPath();
   const authFilePath = await getAuthFilePath();
 
-  // Command to create the IM-cli credentials
-  let authContent = `id = im; type = InfrastructureManager; token = ${obj.accessToken};\n`;
-  authContent += `id = ${obj.id}; type = ${obj.deploymentType}; host = ${obj.host}; `;
+  await persistAuthFile(obj);
 
-  if (obj.deploymentType === 'OpenNebula') {
-    authContent += ` username = ${obj.username}; password = ${obj.password};`;
-  } else if (obj.deploymentType === 'OpenStack') {
-    authContent += `username = ${obj.username}; password = ${obj.password}; tenant = ${obj.tenant}; auth_version = ${obj.authVersion}; domain = ${obj.domain}`;
-  } else if (obj.deploymentType === 'EGI') {
-    authContent += ` vo = ${obj.vo}; token = ${obj.accessToken}`;
-  }
+  const cmd = `
+from pathlib import Path
+import subprocess
 
-  const cmd = `%%bash
-            PWD=$(pwd)
-            # Overwrite the auth file with new content
-            echo -e "${authContent}" > $PWD/${authFilePath}
-            # Create final command where the output is stored in "imageOut"
-            imageOut=$(python3 ${imClientPath} -a $PWD/${authFilePath} -r ${imEndpoint} cloudimages ${obj.id})
-            # Print IM output on stderr or stdout
-            if [ $? -ne 0 ]; then
-                >&2 echo -e $imageOut
-                exit 1
-            else
-                echo -e $imageOut
-            fi
+auth_file = Path(${JSON.stringify(authFilePath)})
+cmd = [
+    "python3",
+    ${JSON.stringify(imClientPath)},
+    "-q",
+    "-a",
+    str(auth_file),
+    "-r",
+    ${JSON.stringify(imEndpoint)},
+    "cloudimages",
+    ${JSON.stringify(obj.id)},
+]
+result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+print(result.stdout)
+if result.returncode != 0:
+    raise RuntimeError(result.stdout)
           `;
 
   // console.log('Get cloud images:', cmd);
@@ -684,22 +716,31 @@ async function deployIMCommand(
   const imClientPath = await getIMClientPath();
   const authFilePath = await getAuthFilePath();
 
-  const cmd = `%%bash
-PWD=$(pwd)
+  await writeTextFile(deployedTemplatePath, mergedTemplate);
+  const deployedTemplateKernelPath = await getStateFilePath(
+    `deployed-template.${format}`
+  );
 
-# Save mergedTemplate in a file
-cat << 'EOF' > ${deployedTemplatePath}
-${mergedTemplate}
-EOF
-# Run IM CLI to deploy using the shared auth file
-imageOut=$(python3 ${imClientPath} -a $PWD/${authFilePath} create ${deployedTemplatePath} -r ${imEndpoint})
-# Print IM output on stderr or stdout
-if [ $? -ne 0 ]; then
-    >&2 echo -e $imageOut
-    exit 1
-else
-    echo -e $imageOut
-fi
+  const cmd = `
+from pathlib import Path
+import subprocess
+
+auth_file = Path(${JSON.stringify(authFilePath)})
+template_file = Path(${JSON.stringify(deployedTemplateKernelPath)})
+cmd = [
+    "python3",
+    ${JSON.stringify(imClientPath)},
+    "-a",
+    str(auth_file),
+    "create",
+    str(template_file),
+    "-r",
+    ${JSON.stringify(imEndpoint)},
+]
+result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+print(result.stdout)
+if result.returncode != 0:
+    raise RuntimeError(result.stdout)
 `;
 
   console.log('TOSCA recipe deployed:', cmd);
@@ -708,19 +749,9 @@ fi
 
 async function saveToInfrastructureList(
   obj: IInfrastructureData
-): Promise<string> {
-  const infrastructuresListPath = await getInfrastructuresListPath();
-
-  // Bash command to update the infrastructuresList JSON
-  const cmd = `%%bash
-              PWD=$(pwd)
-              existingJson=$(cat ${infrastructuresListPath})
-              newJson=$(echo "$existingJson" | jq -c '.infrastructures += [${JSON.stringify(obj)}]')
-              echo "$newJson" > ${infrastructuresListPath}
-           `;
-
-  console.log('Credentials saved to infrastructuresList.json:', cmd);
-  return cmd;
+): Promise<void> {
+  await appendInfrastructureToList(obj);
+  console.log('Data saved to infrastructuresList.json:', obj);
 }
 
 //****************//
@@ -771,8 +802,6 @@ const createCheckboxesForChilds = async (
   dialogBody: HTMLElement,
   childs: string[]
 ): Promise<void> => {
-  const templatesPath = await getDeployableTemplatesPath();
-
   // Create paragraph element for checkboxes
   const paragraph = document.createElement('p');
   paragraph.textContent = 'Select optional recipe features:';
@@ -784,15 +813,8 @@ const createCheckboxesForChilds = async (
 
   // Load YAML files and create checkboxes
   const promises = childs.map(async child => {
-    // Load YAML file asynchronously
-    const recipeFileName = getMainRecipeFileName(child);
-    const file = await contentsManager.get(
-      `${templatesPath}/${recipeFileName}`
-    );
-    const yamlContent = file.content as string;
-
     // Parse YAML content
-    const parsedYaml: any = jsyaml.load(yamlContent);
+    const parsedYaml: any = await loadRecipeTemplate(child);
     const templateName = parsedYaml.metadata.template_name;
 
     // Create list item for checkbox
@@ -931,6 +953,7 @@ const deployProviderCredentials = async (
   dialogBody.appendChild(form);
 
   let text = '';
+  let generatedAccessToken = '';
 
   switch (deployInfo.deploymentType) {
     case 'EC2': {
@@ -977,13 +1000,48 @@ const deployProviderCredentials = async (
       addFormInput(form, 'Access token:', 'access_token', '');
       break;
 
-    case 'EGI':
-      text = '<p class="form-instructions">Introduce EGI credentials.</p>';
+    case 'EGI': {
+      text = '<p class="form-instructions">Introduce EGI configuration.</p>';
 
       addFormInput(form, 'VO:', 'vo', deployInfo.vo);
       addFormInput(form, 'Site name:', 'site', deployInfo.host);
-      addFormInput(form, 'Access token:', 'access_token', '');
+      const accessTokenInput = addFormInput(
+        form,
+        'Access token:',
+        'access_token',
+        '',
+        'text',
+        undefined,
+        undefined,
+        'Getting access token...'
+      );
+      accessTokenInput.disabled = true;
+
+      const tokenStatus = document.createElement('div');
+      tokenStatus.className = 'token-status';
+      const tokenLoader = document.createElement('div');
+      tokenLoader.className = 'mini-loader';
+      const tokenStatusText = document.createElement('span');
+      tokenStatusText.textContent = 'Getting access token...';
+      tokenStatus.appendChild(tokenLoader);
+      tokenStatus.appendChild(tokenStatusText);
+      form.appendChild(tokenStatus);
+
+      try {
+        generatedAccessToken = await getAccessTokenFromShareManager();
+        accessTokenInput.value = generatedAccessToken;
+        accessTokenInput.placeholder = '';
+        tokenStatus.remove();
+      } catch (error) {
+        console.warn('Could not get EGI access token automatically:', error);
+        accessTokenInput.placeholder = 'Paste your EGI access token';
+        tokenStatusText.textContent = 'Could not get token automatically.';
+        tokenLoader.remove();
+      } finally {
+        accessTokenInput.disabled = false;
+      }
       break;
+    }
   }
 
   form.insertAdjacentHTML('afterbegin', text);
@@ -1032,10 +1090,23 @@ const deployProviderCredentials = async (
       case 'EGI':
         deployInfo.host = getInputValue('site');
         deployInfo.vo = getInputValue('vo');
-        deployInfo.accessToken = getInputValue('access_token');
+        deployInfo.accessToken = getInputValue('access_token').trim();
+        deployInfo.accessTokenSource =
+          generatedAccessToken &&
+          deployInfo.accessToken === generatedAccessToken
+            ? 'auto'
+            : 'manual';
+
+        if (!deployInfo.accessToken) {
+          Notification.error('Please provide a valid EGI access token.', {
+            autoClose: 5000
+          });
+          return;
+        }
         break;
     }
 
+    await persistAuthFile(deployInfo);
     deployInfraConfiguration(dialogBody);
   });
 
@@ -1067,7 +1138,91 @@ async function deployInfraConfiguration(
     'text'
   );
 
-  const inputs = await loadRecipeInputs(deployInfo.recipe);
+  let inputs: any | null = null;
+
+  const buttonContainer = document.createElement('div');
+  buttonContainer.className = 'footer-button-container';
+  dialogBody.appendChild(buttonContainer);
+
+  const backBtn = createButton('Back', () =>
+    deployProviderCredentials(dialogBody)
+  );
+  buttonContainer.appendChild(backBtn);
+
+  const nextBtn = createButton(
+    deployInfo.recipe === 'simple node disk' && deployInfo.childs.length === 0
+      ? 'Deploy'
+      : 'Next',
+    async () => {
+      try {
+        const infNameElement =
+          form.querySelector<HTMLInputElement>('#infNameInput');
+        if (infNameElement) {
+          deployInfo.infName = infNameElement.value.trim();
+        }
+
+        const imageDropdown = document.getElementById(
+          'imageDropdown'
+        ) as HTMLSelectElement;
+        if (imageDropdown) {
+          deployInfo.image = imageDropdown.value;
+        }
+
+        const allInputs = form.querySelectorAll<
+          HTMLInputElement | HTMLSelectElement
+        >('input, select');
+        allInputs.forEach(input => {
+          if (input.id === 'infNameInput') {
+            return;
+          }
+
+          const inputName = input.name;
+          const originalInputDef = inputs?.[inputName];
+          const type = originalInputDef?.type;
+
+          let value: any = input.value.trim();
+
+          if (value === '') {
+            return;
+          }
+
+          if (type === 'integer') {
+            value = parseInt(value, 10);
+          } else if (type === 'float') {
+            value = parseFloat(value);
+          }
+
+          if (originalInputDef) {
+            originalInputDef.default = value;
+          }
+          deployInfo.inputs[inputName] = value;
+
+          // console.log(`Updated: '${inputName}' = ${value}`);
+        });
+
+        // console.log('All deployInfo.inputs:', deployInfo.inputs);
+
+        if (
+          deployInfo.recipe === 'simple node disk' &&
+          deployInfo.childs.length === 0
+        ) {
+          await deployFinalRecipe(dialogBody);
+        } else {
+          await deployChildsConfiguration(dialogBody);
+        }
+      } catch (error) {
+        console.error('Error in deployment process:', error);
+        Notification.error(
+          'Check for correct provider credentials before continuing.',
+          { autoClose: 5000 }
+        );
+      }
+    }
+  );
+  nextBtn.disabled = true;
+  buttonContainer.appendChild(nextBtn);
+
+  inputs = await loadRecipeInputs(deployInfo.recipe);
 
   if (inputs) {
     // Create form inputs for frontend and worker nodes
@@ -1124,92 +1279,16 @@ async function deployInfraConfiguration(
       });
   } else {
     const noInputsMessage = document.createElement('p');
-    noInputsMessage.textContent = 'No frontend or worker node inputs found.';
+    noInputsMessage.textContent =
+      'No inputs found. Check that the recipe template is available.';
     form.appendChild(noInputsMessage);
   }
 
-  const buttonContainer = document.createElement('div');
-  buttonContainer.className = 'footer-button-container';
-  dialogBody.appendChild(buttonContainer);
-
-  const backBtn = createButton('Back', () =>
-    deployProviderCredentials(dialogBody)
-  );
-  buttonContainer.appendChild(backBtn);
-
-  const nextBtn = createButton(
-    deployInfo.recipe === 'simple node disk' && deployInfo.childs.length === 0
-      ? 'Deploy'
-      : 'Next',
-    async () => {
-      try {
-        const infNameElement =
-          form.querySelector<HTMLInputElement>('#infNameInput');
-        if (infNameElement) {
-          deployInfo.infName = infNameElement.value.trim();
-        }
-
-        const imageDropdown = document.getElementById(
-          'imageDropdown'
-        ) as HTMLSelectElement;
-        if (imageDropdown) {
-          deployInfo.image = imageDropdown.value;
-        }
-
-        const allInputs = form.querySelectorAll<
-          HTMLInputElement | HTMLSelectElement
-        >('input, select');
-        allInputs.forEach(input => {
-          if (input.id === 'infNameInput') {
-            return;
-          }
-
-          const inputName = input.name;
-          const originalInputDef = inputs?.[inputName];
-          const type = originalInputDef?.type;
-
-          let value: any = input.value.trim();
-
-          if (value === '') {
-            return;
-          }
-
-          if (type === 'integer') {
-            value = parseInt(value, 10);
-          } else if (type === 'float') {
-            value = parseFloat(value);
-          }
-
-          originalInputDef.default = value;
-          deployInfo.inputs[inputName] = value;
-
-          // console.log(`Updated: '${inputName}' = ${value}`);
-        });
-
-        // console.log('All deployInfo.inputs:', deployInfo.inputs);
-
-        if (
-          deployInfo.recipe === 'simple node disk' &&
-          deployInfo.childs.length === 0
-        ) {
-          await deployFinalRecipe(dialogBody);
-        } else {
-          await deployChildsConfiguration(dialogBody);
-        }
-      } catch (error) {
-        console.error('Error in deployment process:', error);
-        Notification.error(
-          'Check for correct provider credentials before continuing.',
-          { autoClose: 5000 }
-        );
-      }
-    }
-  );
-
   if (deployInfo.deploymentType !== 'EC2') {
     nextBtn.disabled = true;
+  } else {
+    nextBtn.disabled = false;
   }
-  buttonContainer.appendChild(nextBtn);
 
   if (deployInfo.deploymentType !== 'EC2') {
     const dropdownContainer = document.createElement('div');
@@ -1313,14 +1392,7 @@ async function deployFinalRecipe(
         }
       }
     }
-    const recipeFileName = getMainRecipeFileName(deployInfo.recipe);
-
-    const templatesPath = await getDeployableTemplatesPath();
-    const file = await contentsManager.get(
-      `${templatesPath}/${recipeFileName}`
-    );
-    const yamlContent = file.content;
-    const parsedTemplate = jsyaml.load(yamlContent) as any;
+    const parsedTemplate = (await loadRecipeTemplate(deployInfo.recipe)) as any;
 
     // Add infrastructure name and a hash to the metadata
     parsedTemplate.metadata = parsedTemplate.metadata || {};
@@ -1409,6 +1481,7 @@ const handleFinalDeployOutput = async (
     // Create a JSON object for infrastructure data
     const infrastructureData: IInfrastructureData = {
       accessToken: deployInfo.accessToken,
+      accessTokenSource: deployInfo.accessTokenSource,
       name: deployInfo.infName,
       infrastructureID,
       id: deployInfo.id,
@@ -1423,14 +1496,10 @@ const handleFinalDeployOutput = async (
       custom: deployInfo.custom
     };
 
-    const cmdSave = await saveToInfrastructureList(infrastructureData);
-
-    // Execute kernel command to save the data
     try {
-      const outputText = await executeKernelCommand(cmdSave);
-      console.log('Data saved to infrastructuresList.json:', outputText);
+      await saveToInfrastructureList(infrastructureData);
     } catch (error) {
-      console.error('Error executing kernel command:', error);
+      console.error('Error saving infrastructure data:', error);
       deploying = false;
     }
     resetDeployInfo();

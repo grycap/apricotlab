@@ -10,6 +10,8 @@ import time
 import os
 import json
 import sys
+import shutil
+import re
 
 IM_ENDPOINT = "https://im.egi.eu/im"
 
@@ -22,38 +24,53 @@ class Apricot_Magics(Magics):
         self.load_paths()
 
         data = self.load_json(self.inf_list_path)
-        access_token = data.get("access_token")
+        access_token = data.get("access_token", "")
+        refresh_token = data.get("refresh_token", "")
+        self.client = None
 
-        if access_token != "":
+        if access_token:
             auth = f"""
                 type = InfrastructureManager; token = {access_token}
             """
-        else:
-            refresh_token = data["refresh_token"]
+            self.client = IMClient.init_client(IM_ENDPOINT, auth)
+        elif refresh_token:
             self.generate_new_access_token(refresh_token)
-
-        self.client = IMClient.init_client(IM_ENDPOINT, auth)
+            self.initialize_im_client()
 
     ########################
     #  Auxiliar functions  #
     ########################
 
     def load_paths(self):
-        # Get the absolute path to the current file (apricot_magics.py)
-        current_dir = Path(__file__).parent
+        state_dir = Path.home() / "apricotlab_state"
+        state_dir.mkdir(exist_ok=True)
 
-        # Construct the path to the 'resources' folder relative to 'apricot_magics/'
-        resources_dir = current_dir.parent / "resources"
+        for legacy_dir in (
+            Path.cwd() / "apricotlab_state",
+            Path.cwd().parent / "apricotlab_state",
+        ):
+            if legacy_dir.exists() and legacy_dir.resolve() != state_dir.resolve():
+                for legacy_file in legacy_dir.iterdir():
+                    target = state_dir / legacy_file.name
+                    if legacy_file.is_file() and not target.exists():
+                        shutil.copy2(legacy_file, target)
 
-        self.inf_list_path = resources_dir / "infrastructuresList.json"
-        self.deployed_template_path = resources_dir / "deployed-template.yaml"
-        self.authfile_path = resources_dir / "authfile"
+        self.inf_list_path = state_dir / "infrastructuresList.json"
+        self.deployed_template_path = state_dir / "deployed-template.yaml"
+        self.authfile_path = state_dir / "authfile"
 
-        # Check if the files exist
         if not self.inf_list_path.exists():
-            raise FileNotFoundError(f"File not found: {self.inf_list_path}")
+            self.inf_list_path.write_text(
+                json.dumps({"refresh_token": "", "infrastructures": []}, indent=4)
+            )
+
         if not self.deployed_template_path.exists():
-            raise FileNotFoundError(f"File not found: {self.deployed_template_path}")
+            self.deployed_template_path.touch()
+
+        if not self.authfile_path.exists():
+            self.authfile_path.write_text(
+                "id = im; type = InfrastructureManager; token = <token>\n"
+            )
 
     def load_json(self, path):
         """Load a JSON file and handle errors."""
@@ -422,101 +439,80 @@ class Apricot_Magics(Magics):
             )
         )
 
+    def get_raw_infrastructure_info(self, inf_id):
+        try:
+            self.initialize_im_client()
+            success, inf_info = self.client.getinfo(inf_id)
+            return list(inf_info)
+
+        except Exception as e:
+            print(f"Error: {e}")
+            return None
+
+    @line_magic
+    def apricot_radl(self, line):
+        if not line:
+            return "Usage: `%apricot_radl infrastructure-id`\n"
+
+        inf_id = line.split()[0]
+        inf_info_items = self.get_raw_infrastructure_info(inf_id)
+
+        if inf_info_items is None:
+            return "Failed"
+
+        for item in inf_info_items:
+            print(*item, sep="\n")
+
     @line_magic
     def apricot_info(self, line):
         if not line:
             return "Usage: `%apricot_info infrastructure-id`\n"
 
         inf_id = line.split()[0]
+        inf_info_items = self.get_raw_infrastructure_info(inf_id)
 
-        try:
-            self.initialize_im_client()
-            success, inf_info = self.client.getinfo(inf_id)
-
-        except Exception as e:
-            print(f"Error: {e}")
+        if inf_info_items is None:
             return "Failed"
 
-        for item in inf_info:
-            print(*item, sep="\n")
-
-        # @line_magic
-        # def apricot_vmls(self, line):
-        if not line:
-            print("Usage: `%apricot_vmls infrastructure-id`\n")
-            return "Fail"
-
-        inf_id = line.split()[0]
         vm_info_list = []
 
-        try:
-            self.initialize_im_client()
-            success, inf_info = self.client.getinfo(inf_id)
+        def extract_property(output, names, operators=("=", ">=")):
+            for name in names:
+                for operator in operators:
+                    pattern = rf"{re.escape(name)}\s*{re.escape(operator)}\s*'([^']*)'"
+                    match = re.search(pattern, output)
+                    if match:
+                        return match.group(1).split()[0]
 
-        except Exception as e:
-            print(f"Error: {e}")
-            return "Failed"
+                    pattern = rf"{re.escape(name)}\s*{re.escape(operator)}\s*([^\s\n]+)"
+                    match = re.search(pattern, output)
+                    if match:
+                        return match.group(1).strip("'")
 
-        for item in inf_info:
+            return "N/A"
+
+        for item in inf_info_items:
             vm_id = item[0]
-            (
-                net_interface_ip,
-                provider_type,
-                disk_size,
-                cpu_count,
-                memory_size,
-                gpu_count,
-            ) = (None, None, None, None, None, None)
+            output_string = item[2] if len(item) > 2 else ""
 
-            output_string = item[
-                2
-            ]  # The third element contains the VM details as a string
-            for line in output_string.split("\n"):
-                if "net_interface.0.ip =" in line:
-                    net_interface_ip = (
-                        line.split("= ")[1].strip().replace("'", "").split(" ")[0]
-                    )
-                if "provider.type =" in line:
-                    provider_type = (
-                        line.split("= ")[1].strip().replace("'", "").split(" ")[0]
-                    )
-                if "disk.0.size >=" in line:
-                    disk_size = line.split(">= ")[1].strip().strip("'").split(" ")[0]
-                if "cpu.count =" in line:
-                    cpu_count = line.split("= ")[1].strip().strip("'").split(" ")[0]
-                if "memory.size =" in line:
-                    memory_size = line.split("= ")[1].strip().strip("'").split(" ")[0]
-                if "gpu.count >=" in line:
-                    gpu_count = line.split(">= ")[1].strip().strip("'").split(" ")[0]
-
-            start_time = time.time()
-            while not all(
-                (
+            vm_info_list.append(
+                [
                     vm_id,
-                    net_interface_ip,
-                    provider_type,
-                    disk_size,
-                    cpu_count,
-                    memory_size,
-                    memory_size,
-                )
-            ):  # Ensure valid values
-                if time.time() - start_time > 4:
-                    break
-                # time.sleep(1)
+                    extract_property(
+                        output_string,
+                        ["net_interface.1.ip", "net_interface.0.ip", "node_ip"],
+                    ),
+                    extract_property(output_string, ["provider.type"]),
+                    extract_property(output_string, ["disk.0.size"]),
+                    extract_property(output_string, ["cpu.count"]),
+                    extract_property(output_string, ["memory.size"]),
+                    extract_property(output_string, ["gpu.count"]),
+                ]
+            )
 
-                # if all((vm_id, net_interface_ip, provider_type, disk_size, cpu_count, memory_size, gpu_count)):
-                vm_info_list.append(
-                    [
-                        vm_id,
-                        net_interface_ip,
-                        provider_type,
-                        disk_size,
-                        cpu_count,
-                        memory_size,
-                        gpu_count,
-                    ]
-                )
+        if not vm_info_list:
+            print("No VM information found.")
+            return
 
         # Print table
         print(
@@ -644,7 +640,7 @@ class Apricot_Magics(Magics):
             for line in lines:
                 if len(line) > 0:
                     result = self.apricot(line.strip())
-                    if result != "Done":
+                    if result not in ("Done", None):
                         print("Execution stopped")
                         return f"Fail on line: '{line.strip()}'"
             return "Done"
@@ -709,7 +705,7 @@ class Apricot_Magics(Magics):
 
                 self.cleanup_files("key.pem")
 
-                return "Done"
+                return None
 
         elif word1 == "list":
             return self.apricot_ls("")

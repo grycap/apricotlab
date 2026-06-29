@@ -1,18 +1,22 @@
 import { Dialog, Notification } from '@jupyterlab/apputils';
 import { Widget } from '@lumino/widgets';
 import {
-  getInfrastructuresListPath,
   getIMClientPath,
   createButton,
   getAuthFilePath,
   executeKernelCommand,
-  getOrStartKernel
+  getAccessTokenFromShareManager,
+  persistAuthFile,
+  writeAuthFile,
+  readInfrastructuresList,
+  removeInfrastructureFromList
 } from './utils';
 
 interface IInfrastructure {
   IMuser: string;
   IMpass: string;
   accessToken: string;
+  accessTokenSource?: 'auto' | 'manual';
   name: string;
   infrastructureID: string;
   id: string;
@@ -99,28 +103,16 @@ async function deleteButton(
     const loader = document.createElement('div');
     loader.className = 'mini-loader';
     deleteButton.textContent = '';
+    deleteButton.disabled = true;
+    deleteButton.appendChild(loader);
 
     try {
+      await refreshAndPersistListAuth([infrastructure]);
       const cmdDeploy = await destroyInfrastructure(infrastructureId);
-
-      deleteButton.appendChild(loader);
 
       const outputText = await executeKernelCommand(cmdDeploy);
 
-      if (outputText && outputText.includes('successfully destroyed')) {
-        row.remove();
-
-        Notification.success(
-          `Infrastructure ${infrastructureId} successfully destroyed.`,
-          {
-            autoClose: 5000
-          }
-        );
-        console.log(outputText);
-
-        const cmdDeleteInfra = await removeInfraFromList(infrastructureId);
-        await executeKernelCommand(cmdDeleteInfra);
-      } else {
+      if (outputText?.toLowerCase().includes('error')) {
         Notification.error(
           'Error destroying infrastructure. Check the console for more details.',
           {
@@ -128,7 +120,20 @@ async function deleteButton(
           }
         );
         console.error('Error destroying infrastructure:', outputText);
+        return;
       }
+
+      row.remove();
+
+      Notification.success(
+        `Infrastructure ${infrastructureId} successfully destroyed.`,
+        {
+          autoClose: 5000
+        }
+      );
+      console.log(outputText);
+
+      await removeInfrastructureFromList(infrastructureId);
     } catch (error) {
       Notification.error(
         'Error destroying infrastructure. Check the console for more details.',
@@ -140,8 +145,11 @@ async function deleteButton(
       console.error('Error destroying infrastructure:', error);
     } finally {
       // Ensure that the loader is always removed after the try/catch block
-      deleteButton.removeChild(loader);
+      if (deleteButton.contains(loader)) {
+        deleteButton.removeChild(loader);
+      }
       deleteButton.textContent = 'Delete';
+      deleteButton.disabled = false;
     }
   });
 
@@ -149,30 +157,10 @@ async function deleteButton(
 }
 
 async function populateTable(table: HTMLTableElement): Promise<void> {
-  let jsonData: string | null = null;
-  const infrastructuresListPath = await getInfrastructuresListPath();
-  console.log('infrastructuresListPath:', infrastructuresListPath);
-
-  const kernel = await getOrStartKernel();
-
+  let infrastructures: IInfrastructure[] = [];
   try {
-    // Read infrastructuresList.json
-    const cmdReadJson = `%%bash
-                          cat "${infrastructuresListPath}"`;
-    const futureReadJson = kernel.requestExecute({ code: cmdReadJson });
-
-    futureReadJson.onIOPub = (msg: any) => {
-      const content = msg.content as any;
-      if (content && content.text) {
-        jsonData = (jsonData || '') + content.text;
-      }
-    };
-
-    await futureReadJson.done;
-
-    if (!jsonData) {
-      throw new Error('infrastructuresList.json does not exist in the path.');
-    }
+    const data = await readInfrastructuresList();
+    infrastructures = data.infrastructures;
   } catch (error) {
     console.error('Error reading or parsing infrastructuresList.json:', error);
     Notification.error(
@@ -181,29 +169,12 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
         autoClose: 5000
       }
     );
-  }
-
-  // Parse the JSON data
-  let infrastructures: IInfrastructure[] = [];
-  try {
-    if (jsonData) {
-      infrastructures = JSON.parse(jsonData).infrastructures;
-    }
-  } catch (error) {
-    console.error(
-      'Error parsing JSON data from infrastructuresList.json:',
-      error
-    );
-    Notification.error(
-      'Error parsing JSON data from infrastructuresList.json. Check the console for more details.',
-      {
-        autoClose: 5000
-      }
-    );
     throw new Error('Error parsing JSON data');
   }
 
-  // Populate the table rows and fetch IP and state for each infrastructure
+  await refreshAndPersistListAuth(infrastructures);
+
+  // Populate the table rows and fetch IP and state for each infrastructure.
   await Promise.all(
     infrastructures.map(async infrastructure => {
       const row = table.insertRow();
@@ -230,13 +201,57 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
           error
         );
         stateCell.textContent = 'Error';
-        ipCell.textContent = 'Error';
+        ipCell.textContent = 'N/A';
       }
 
       const deleteBtn = await deleteButton(infrastructure, row);
       actionCell.appendChild(deleteBtn);
     })
   );
+}
+
+async function refreshAndPersistListAuth(
+  infrastructures: IInfrastructure[]
+): Promise<void> {
+  let accessToken = '';
+
+  try {
+    accessToken = await getAccessTokenFromShareManager();
+  } catch (error) {
+    console.warn(
+      'Could not refresh EGI access token before listing deployments.',
+      error
+    );
+  }
+
+  if (infrastructures.length === 0) {
+    await writeAuthFile(
+      `id = im; type = InfrastructureManager; token = ${accessToken || '<token>'}\n`
+    );
+    return;
+  }
+
+  const egiInfrastructure = infrastructures.find(
+    infrastructure => infrastructure.type === 'EGI'
+  );
+
+  if (accessToken) {
+    infrastructures
+      .filter(
+        infrastructure =>
+          infrastructure.type === 'EGI' &&
+          infrastructure.accessTokenSource !== 'manual'
+      )
+      .forEach(infrastructure => {
+        infrastructure.accessToken = accessToken;
+        infrastructure.accessTokenSource = 'auto';
+      });
+  }
+
+  await persistAuthFile({
+    ...(egiInfrastructure || infrastructures[0]),
+    imAccessToken: accessToken || egiInfrastructure?.accessToken
+  });
 }
 
 async function getInfrastructureInfo(
@@ -248,24 +263,57 @@ async function getInfrastructureInfo(
   const imClientPath = await getIMClientPath();
   const authFilePath = await getAuthFilePath();
 
-  const cmd = `%%bash
-                PWD=$(pwd)
-                if [ "${dataType}" = "state" ]; then
-                    stateOut=$(python3 ${imClientPath} getstate ${infrastructureID} -r ${imEndpoint} -a $PWD/${authFilePath})
-                else
-                    stateOut=$(python3 ${imClientPath} getvminfo ${infrastructureID} 0 net_interface.1.ip -r ${imEndpoint} -a $PWD/${authFilePath})
-                fi
-                # Print state output on stderr or stdout
-                if [ $? -ne 0 ]; then
-                    >&2 echo -e $stateOut
-                    exit 1
-                else
-                    echo -e $stateOut
-                fi
+  const imArgs =
+    dataType === 'state'
+      ? ['getstate', infrastructureID]
+      : ['getvminfo', infrastructureID, '0', 'net_interface.1.ip'];
+
+  const cmd = `
+from pathlib import Path
+import subprocess
+
+auth_file = Path(${JSON.stringify(authFilePath)})
+cmd = [
+    "python3",
+    ${JSON.stringify(imClientPath)},
+    "-q",
+    *${JSON.stringify(imArgs)},
+    "-r",
+    ${JSON.stringify(imEndpoint)},
+    "-a",
+    str(auth_file),
+]
+result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+print(result.stdout)
+if result.returncode != 0:
+    raise RuntimeError(result.stdout)
               `;
 
   console.log(`Get ${dataType} command: `, cmd);
   return cmd;
+}
+
+function extractIpAddress(output: string): string {
+  const ipv4Matches = output.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g) || [];
+  const validIps = ipv4Matches.filter(ip =>
+    ip.split('.').every(octet => Number(octet) <= 255)
+  );
+
+  return validIps[validIps.length - 1] || 'N/A';
+}
+
+function extractInfrastructureState(output: string): string {
+  try {
+    const parsedOutput = JSON.parse(output);
+    if (typeof parsedOutput?.state === 'string') {
+      return parsedOutput.state;
+    }
+  } catch {
+    // Fall back to parsing older, non-JSON IM client output.
+  }
+
+  const stateMatch = output.match(/\bstate\b\s*[:=]\s*"?([A-Za-z_-]+)"?/);
+  return stateMatch?.[1] || 'Error';
 }
 
 async function fetchInfrastructureData(
@@ -277,7 +325,7 @@ async function fetchInfrastructureData(
     const outputData = await executeKernelCommand(cmd);
 
     if (!outputData || outputData.trim() === '') {
-      return 'No Output';
+      return dataType === 'ip' ? 'N/A' : 'No Output';
     }
 
     console.log(`Received output for ${dataType}:`, outputData);
@@ -285,25 +333,19 @@ async function fetchInfrastructureData(
     let result: string;
 
     if (outputData.toLowerCase().includes('error')) {
-      result = outputData;
+      result = dataType === 'ip' ? 'N/A' : outputData;
     } else {
       if (dataType === 'state') {
-        const stateWords = outputData.trim().split(' ');
-        const stateIndex = stateWords.indexOf('state:');
-        result =
-          stateIndex !== -1 && stateIndex < stateWords.length - 1
-            ? stateWords[stateIndex + 1].trim()
-            : 'Error';
+        result = extractInfrastructureState(outputData);
       } else {
-        const ipWords = outputData.trim().split(' ');
-        result = ipWords[ipWords.length - 1] || 'Error';
+        result = extractIpAddress(outputData);
       }
     }
 
     return result;
   } catch (error) {
     console.error(`Error fetching ${dataType}:`, error);
-    return 'Error';
+    return dataType === 'ip' ? 'N/A' : 'Error';
   }
 }
 
@@ -313,37 +355,31 @@ async function destroyInfrastructure(
   const imClientPath = await getIMClientPath();
   const authFilePath = await getAuthFilePath();
 
-  const cmd = `%%bash
-            PWD=$(pwd)
-            # Create final command where the output is stored in "destroyOut"
-            destroyOut=$(python3 ${imClientPath} destroy ${infrastructureID} -a $PWD/${authFilePath} -r ${imEndpoint})
-            # Print IM output on stderr or stdout
-            if [ $? -ne 0 ]; then
-                >&2 echo -e $destroyOut
-                exit 1
-            else
-                echo -e $destroyOut
-            fi
+  const cmd = `
+from pathlib import Path
+import subprocess
+
+auth_file = Path(${JSON.stringify(authFilePath)})
+cmd = [
+    "python3",
+    ${JSON.stringify(imClientPath)},
+    "-q",
+    "destroy",
+    "-y",
+    ${JSON.stringify(infrastructureID)},
+    "-a",
+    str(auth_file),
+    "-r",
+    ${JSON.stringify(imEndpoint)},
+]
+result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+print(result.stdout)
+if result.returncode != 0:
+    raise RuntimeError(result.stdout)
           `;
 
   console.log(cmd);
   return cmd;
-}
-
-async function removeInfraFromList(infrastructureID: string): Promise<string> {
-  const infrastructuresListPath = await getInfrastructuresListPath();
-
-  // Create a Bash command to remove the infrastructure from the JSON file
-  const cmdDeleteInfra = `
-    %%bash
-    PWD=$(pwd)
-    existingJson=$(cat ${infrastructuresListPath})
-    newJson=$(echo "$existingJson" | jq -c 'del(.infrastructures[] | select(.infrastructureID == "${infrastructureID}"))')
-    echo "$newJson" > ${infrastructuresListPath}
-  `;
-
-  console.log(`Bash Command: ${cmdDeleteInfra}`);
-  return cmdDeleteInfra;
 }
 
 export { openListDeploymentsDialog };
