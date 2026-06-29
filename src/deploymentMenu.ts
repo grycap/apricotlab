@@ -1000,7 +1000,7 @@ const deployProviderCredentials = async (
       addFormInput(form, 'Access token:', 'access_token', '');
       break;
 
-    case 'EGI':
+    case 'EGI': {
       text = '<p class="form-instructions">Introduce EGI configuration.</p>';
 
       addFormInput(form, 'VO:', 'vo', deployInfo.vo);
@@ -1041,6 +1041,7 @@ const deployProviderCredentials = async (
         accessTokenInput.disabled = false;
       }
       break;
+    }
   }
 
   form.insertAdjacentHTML('afterbegin', text);

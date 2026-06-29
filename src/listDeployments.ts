@@ -308,7 +308,7 @@ function extractInfrastructureState(output: string): string {
     if (typeof parsedOutput?.state === 'string') {
       return parsedOutput.state;
     }
-  } catch (error) {
+  } catch {
     // Fall back to parsing older, non-JSON IM client output.
   }
 
