@@ -1091,7 +1091,8 @@ const deployProviderCredentials = async (
         deployInfo.vo = getInputValue('vo');
         deployInfo.accessToken = getInputValue('access_token').trim();
         deployInfo.accessTokenSource =
-          generatedAccessToken && deployInfo.accessToken === generatedAccessToken
+          generatedAccessToken &&
+          deployInfo.accessToken === generatedAccessToken
             ? 'auto'
             : 'manual';
 

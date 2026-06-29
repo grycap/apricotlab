@@ -169,7 +169,10 @@ path.write_text(${JSON.stringify(content)})
   await executeKernelCommand(cmd);
 }
 
-export async function writeTextFile(path: string, content: string): Promise<void> {
+export async function writeTextFile(
+  path: string,
+  content: string
+): Promise<void> {
   const cmd = `
 from pathlib import Path
 
@@ -244,7 +247,9 @@ export async function getAccessTokenFromShareManager(): Promise<string> {
   const responseText = await response.text();
 
   if (!response.ok) {
-    throw new Error(responseText || `${response.status} ${response.statusText}`);
+    throw new Error(
+      responseText || `${response.status} ${response.statusText}`
+    );
   }
 
   let payload: any = responseText.trim();

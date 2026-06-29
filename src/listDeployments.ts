@@ -162,10 +162,7 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
     const data = await readInfrastructuresList();
     infrastructures = data.infrastructures;
   } catch (error) {
-    console.error(
-      'Error reading or parsing infrastructuresList.json:',
-      error
-    );
+    console.error('Error reading or parsing infrastructuresList.json:', error);
     Notification.error(
       'Error reading or parsing infrastructuresList.json. Check the console for more details.',
       {
