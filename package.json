@@ -43,7 +43,7 @@
         "clean:labextension": "rimraf apricot/labextension apricot/_version.py",
         "clean:all": "jlpm clean:lib && jlpm clean:labextension && jlpm clean:lintcache",
         "eslint": "jlpm eslint:check --fix",
-        "eslint:check": "eslint . --cache --ext .ts,.tsx",
+        "eslint:check": "eslint . --cache",
         "install:extension": "jlpm build",
         "lint": "jlpm stylelint && jlpm prettier && jlpm eslint",
         "lint:check": "jlpm stylelint:check && jlpm prettier:check && jlpm eslint:check",
@@ -65,7 +65,7 @@
         "@jupyterlab/ui-components": "^4.5.6",
         "@lumino/disposable": "^2.1.5",
         "@lumino/widgets": "^2.7.5",
-        "js-yaml": "4.1.1"
+        "js-yaml": "^4.3.2"
     },
     "devDependencies": {
         "@jupyterlab/builder": "^4.5.6",
@@ -75,13 +75,13 @@
         "@types/react": "^18.3.0",
         "@types/react-addons-linked-state-mixin": "^0.14.22",
         "@types/ws": "^8",
-        "@typescript-eslint/eslint-plugin": "^8.0.0",
-        "@typescript-eslint/parser": "^8.0.0",
+        "@typescript-eslint/eslint-plugin": "^8.56.0",
+        "@typescript-eslint/parser": "^8.56.0",
         "css-loader": "^7.1.2",
-        "eslint": "^9.0.0",
+        "eslint": "^10.0.0",
         "eslint-config-prettier": "^9.1.0",
         "eslint-plugin-prettier": "^5.2.1",
-        "glob": "^10.5.0",
+        "glob": "^13.0.0",
         "prettier": "^3.3.3",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
@@ -108,66 +108,6 @@
     "jupyterlab": {
         "extension": true,
         "outputDir": "apricot/labextension"
-    },
-    "eslintIgnore": [
-        "node_modules",
-        "dist",
-        "coverage",
-        "**/*.d.ts"
-    ],
-    "eslintConfig": {
-        "extends": [
-            "eslint:recommended",
-            "plugin:@typescript-eslint/eslint-recommended",
-            "plugin:@typescript-eslint/recommended",
-            "plugin:prettier/recommended"
-        ],
-        "parser": "@typescript-eslint/parser",
-        "parserOptions": {
-            "project": "tsconfig.json",
-            "sourceType": "module"
-        },
-        "plugins": [
-            "@typescript-eslint"
-        ],
-        "rules": {
-            "@typescript-eslint/naming-convention": [
-                "error",
-                {
-                    "selector": "interface",
-                    "format": [
-                        "PascalCase"
-                    ],
-                    "custom": {
-                        "regex": "^I[A-Z]",
-                        "match": true
-                    }
-                }
-            ],
-            "@typescript-eslint/no-unused-vars": [
-                "warn",
-                {
-                    "args": "none"
-                }
-            ],
-            "@typescript-eslint/no-explicit-any": "off",
-            "@typescript-eslint/no-namespace": "off",
-            "@typescript-eslint/no-use-before-define": "off",
-            "@typescript-eslint/quotes": [
-                "error",
-                "single",
-                {
-                    "avoidEscape": true,
-                    "allowTemplateLiterals": false
-                }
-            ],
-            "curly": [
-                "error",
-                "all"
-            ],
-            "eqeqeq": "error",
-            "prefer-arrow-callback": "error"
-        }
     },
     "prettier": {
         "singleQuote": true,

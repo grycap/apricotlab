@@ -27,7 +27,7 @@ dependencies = [
     "ipython>=8.0.0",
     "tabulate",
     "requests",
-    "PyJWT",
+    "PyJWT>=2.15.1",
 ]
 dynamic = ["version", "description", "authors", "urls", "keywords"]
 
