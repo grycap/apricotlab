@@ -24,15 +24,6 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -U "jupyterlab>=4.3.0,<5"
 
-      - name: Pin jlpm to the project Yarn version
-        run: |
-          mkdir -p "$RUNNER_TEMP/project-yarn"
-          printf '#!/usr/bin/env bash\nexec corepack yarn "$@"\n' > "$RUNNER_TEMP/project-yarn/jlpm"
-          chmod +x "$RUNNER_TEMP/project-yarn/jlpm"
-          echo "$RUNNER_TEMP/project-yarn" >> "$GITHUB_PATH"
-          export PATH="$RUNNER_TEMP/project-yarn:$PATH"
-          jlpm --version
-
       - name: Lint the extension
         run: |
           set -eux
