@@ -284,37 +284,31 @@ async function createImagesDropdown(
 
   const jsonOutput = output.substring(jsonStartIndex).trim();
 
-  try {
-    const images: { uri: string; name: string }[] = JSON.parse(jsonOutput);
-    imageOptions = images;
-    // console.log('Parsed images:', images);
+  const images: { uri: string; name: string }[] = JSON.parse(jsonOutput);
+  imageOptions = images;
+  // console.log('Parsed images:', images);
 
-    // Clear the dropdown container before appending new content
-    dropdownContainer.innerHTML = '';
-    appendVmImagesTitle(dropdownContainer);
+  // Clear the dropdown container before appending new content
+  dropdownContainer.innerHTML = '';
+  appendVmImagesTitle(dropdownContainer);
 
-    const label = document.createElement('label');
-    label.textContent = 'Image:';
-    label.classList.add('images-label');
-    dropdownContainer.appendChild(label);
+  const label = document.createElement('label');
+  label.textContent = 'Image:';
+  label.classList.add('images-label');
+  dropdownContainer.appendChild(label);
 
-    // Create dropdown menu with image options
-    const select = document.createElement('select');
-    select.id = 'imageDropdown';
-    select.classList.add('dropdown');
-    imageOptions.forEach(image => {
-      const option = document.createElement('option');
-      option.value = image.uri;
-      option.textContent = image.name;
-      select.appendChild(option);
-    });
+  // Create dropdown menu with image options
+  const select = document.createElement('select');
+  select.id = 'imageDropdown';
+  select.classList.add('dropdown');
+  imageOptions.forEach(image => {
+    const option = document.createElement('option');
+    option.value = image.uri;
+    option.textContent = image.name;
+    select.appendChild(option);
+  });
 
-    dropdownContainer.appendChild(select);
-  } catch (error) {
-    throw new Error(
-      `Could not parse the image list: ${error instanceof Error ? error.message : String(error)}`
-    );
-  }
+  dropdownContainer.appendChild(select);
 }
 
 export async function mergeTOSCARecipes(
