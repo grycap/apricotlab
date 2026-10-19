@@ -27,6 +27,8 @@ jobs:
       - name: Lint the extension
         run: |
           set -eux
+          jlpm --version
+          yarn --version
           jlpm
           jlpm run lint:check
 
