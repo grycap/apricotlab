@@ -157,7 +157,7 @@ async function deleteButton(
 }
 
 async function populateTable(table: HTMLTableElement): Promise<void> {
-  let infrastructures: IInfrastructure[] = [];
+  let infrastructures: IInfrastructure[];
   try {
     const data = await readInfrastructuresList();
     infrastructures = data.infrastructures;
@@ -169,7 +169,7 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
         autoClose: 5000
       }
     );
-    throw new Error('Error parsing JSON data');
+    throw new Error('Error parsing JSON data', { cause: error });
   }
 
   await refreshAndPersistListAuth(infrastructures);
