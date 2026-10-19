@@ -1,4 +1,4 @@
-FROM ubuntu:24.04
+FROM ubuntu:26.04
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -29,8 +29,9 @@ RUN pip install --upgrade pip \
     hatch-jupyter-builder \
     hatchling
 
-# Install Node.js v22, Yarn globally and clean up APT cache
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+
+# Install Node.js v24, Yarn globally and clean up APT cache
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
  && apt-get install -y nodejs \
  && npm install -g yarn \
  && apt-get clean && rm -rf /var/lib/apt/lists/*
