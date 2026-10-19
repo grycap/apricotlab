@@ -265,29 +265,21 @@ async function createImagesDropdown(
   dropdownContainer: HTMLElement
 ) {
   if (!output) {
-    console.log('Getting OS images...');
-    return;
+    throw new Error('The image command returned no data.');
   }
 
-  // Check if the output contains "error" in the message
+  // Surface errors returned by the IM command through the caller's UI handler.
   if (output.toLowerCase().includes('error')) {
-    console.error(output);
-    Notification.error(
-      'No OS images found. Bad provider credentials or expired token.',
-      {
-        autoClose: 5000
-      }
-    );
+    throw new Error(output.trim());
   }
 
   // Find the first occurrence of '[' and get the substring from there
   const jsonStartIndex = output.indexOf('[');
   const jsonEndIndex = output.lastIndexOf(']') + 1;
   if (jsonStartIndex === -1 || jsonEndIndex === -1) {
-    console.error(
-      'No OS images found. Check provider credentials or valid access token.'
+    throw new Error(
+      'No OS images were returned. Check the provider credentials and access token.'
     );
-    return;
   }
 
   const jsonOutput = output.substring(jsonStartIndex).trim();
@@ -319,7 +311,9 @@ async function createImagesDropdown(
 
     dropdownContainer.appendChild(select);
   } catch (error) {
-    console.error('Error getting OS images:', error);
+    throw new Error(
+      `Could not parse the image list: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }
 
@@ -594,8 +588,12 @@ async function createImageDropdown(
       nextBtn.disabled = false;
     }
   } catch (error) {
-    console.error('Error loading image dropdown:', error);
-    dropdownContainer.removeChild(loader);
+    const errorMessage =
+      error instanceof Error ? error.message : String(error);
+    Notification.error(`Could not load VM images: ${errorMessage}`, {
+      autoClose: 5000
+    });
+    loader.remove();
   }
 }
 
