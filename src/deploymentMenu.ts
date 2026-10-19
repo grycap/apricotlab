@@ -588,8 +588,7 @@ async function createImageDropdown(
       nextBtn.disabled = false;
     }
   } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : String(error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     Notification.error(`Could not load VM images: ${errorMessage}`, {
       autoClose: 5000
     });
