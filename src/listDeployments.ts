@@ -169,7 +169,7 @@ async function populateTable(table: HTMLTableElement): Promise<void> {
         autoClose: 5000
       }
     );
-    throw new Error('Error parsing JSON data', { cause: error });
+    throw error;
   }
 
   await refreshAndPersistListAuth(infrastructures);
