@@ -1,3 +1,5 @@
+import { describe, expect, it, jest } from '@jest/globals';
+
 const openDeploymentDialog = jest.fn();
 const openListDeploymentsDialog = jest.fn();
 
@@ -16,6 +18,11 @@ jest.mock('@jupyterlab/apputils', () => ({
 
 import { ToolbarButton } from '@jupyterlab/apputils';
 import { ButtonExtension } from '../../src/buttons';
+
+interface IToolbarButtonOptions {
+  label: string;
+  onClick: () => void;
+}
 
 describe('ButtonExtension', () => {
   it('adds both APRICOT buttons and connects their actions', () => {
@@ -37,9 +44,10 @@ describe('ButtonExtension', () => {
       expect.any(Object)
     );
 
-    const toolbarButton = ToolbarButton as unknown as jest.Mock;
-    const listOptions = toolbarButton.mock.calls[1][0];
-    const deploymentOptions = toolbarButton.mock.calls[0][0];
+    const toolbarButton = ToolbarButton as unknown as jest.Mock<any>;
+    const listOptions = toolbarButton.mock.calls[1][0] as IToolbarButtonOptions;
+    const deploymentOptions = toolbarButton.mock
+      .calls[0][0] as IToolbarButtonOptions;
     expect(listOptions.label).toBe(' Deployments list');
     expect(deploymentOptions.label).toBe(' Deployment menu');
 
@@ -49,7 +57,13 @@ describe('ButtonExtension', () => {
     expect(openDeploymentDialog).toHaveBeenCalledTimes(1);
 
     disposable.dispose();
-    expect(toolbarButton.mock.results[0].value.dispose).toHaveBeenCalled();
-    expect(toolbarButton.mock.results[1].value.dispose).toHaveBeenCalled();
+    const deploymentButton = toolbarButton.mock.results[0].value as {
+      dispose: jest.Mock;
+    };
+    const listButton = toolbarButton.mock.results[1].value as {
+      dispose: jest.Mock;
+    };
+    expect(deploymentButton.dispose).toHaveBeenCalled();
+    expect(listButton.dispose).toHaveBeenCalled();
   });
 });

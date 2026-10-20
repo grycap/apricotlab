@@ -1,3 +1,5 @@
+import { describe, expect, it, jest } from '@jest/globals';
+
 const notificationSuccess = jest.fn();
 const addWidgetExtension = jest.fn();
 const widgetAddClass = jest.fn();
@@ -7,11 +9,14 @@ jest.mock('@jupyterlab/apputils', () => ({
   Notification: { success: notificationSuccess }
 }));
 jest.mock('@lumino/widgets', () => ({
-  Widget: jest.fn().mockImplementation(({ node }) => ({
-    addClass: widgetAddClass,
-    id: '',
-    node
-  }))
+  Widget: jest.fn().mockImplementation((options: unknown) => {
+    const { node } = options as { node: HTMLElement };
+    return {
+      addClass: widgetAddClass,
+      id: '',
+      node
+    };
+  })
 }));
 jest.mock('../../src/buttons', () => ({
   ButtonExtension: jest.fn().mockImplementation(() => ({ marker: 'buttons' }))
