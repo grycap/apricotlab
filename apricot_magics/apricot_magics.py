@@ -232,7 +232,7 @@ class Apricot_Magics(Magics):
     def get_vm_ip(self, inf_id):
         try:
             self.initialize_im_client()
-            success, vm_ip = self.client.getvminfo(inf_id, "0", "net_interface.0.ip")
+            success, vm_ip = self.client.getvminfo(inf_id, "0", "net_interface.1.ip")
             if not success:
                 raise Exception(vm_ip)  # vm_ip contains the error message in this case
         except Exception as e:
