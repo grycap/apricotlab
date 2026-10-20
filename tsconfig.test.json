@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "incremental": false,
+    "module": "commonjs",
+    "noEmit": true,
+    "noUnusedLocals": false,
+    "rootDir": ".",
+    "types": ["jest", "node"]
+  },
+  "include": ["src/**/*.ts", "tests/frontend/**/*.ts"]
+}

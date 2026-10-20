@@ -8,14 +8,7 @@ module.exports = {
       'ts-jest',
       {
         diagnostics: true,
-        tsconfig: {
-          ...require('./tsconfig.json').compilerOptions,
-          composite: false,
-          declaration: false,
-          module: 'commonjs',
-          noUnusedLocals: false,
-          rootDir: '.'
-        }
+        tsconfig: 'tsconfig.test.json'
       }
     ]
   }
