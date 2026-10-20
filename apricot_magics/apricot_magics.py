@@ -109,7 +109,8 @@ class Apricot_Magics(Magics):
             success, inf_key = self.client.getinfo(
                 inf_id, "disk.0.os.credentials.private_key"
             )
-
+            if not success:
+                raise Exception(inf_key)  # inf_key contains the error message in this case
         except Exception as e:
             print(f"Error: {e}")
             return "Failed"
@@ -129,7 +130,8 @@ class Apricot_Magics(Magics):
             success, inf_info = self.client.getinfo(
                 inf_id, "disk.0.os.credentials.username"
             )
-
+            if not success:
+                raise Exception(inf_info)  # inf_info contains the error message in this case
         except Exception as e:
             print(f"Error: {e}")
             return "Failed"
@@ -218,8 +220,9 @@ class Apricot_Magics(Magics):
         try:
             self.initialize_im_client()
             success, inf_info = self.client.get_infra_property(inf_id, "state")
+            if not success:
+                raise Exception(inf_info)  # inf_info contains the error message in this case
             state = inf_info.get("state", "Error getting status info")
-
         except Exception as e:
             print(f"Error: {e}")
             return "Failed"
@@ -229,14 +232,14 @@ class Apricot_Magics(Magics):
     def get_vm_ip(self, inf_id):
         try:
             self.initialize_im_client()
-            success, inf_info = self.client.get_infra_property(inf_id, "outputs")
-            ip = inf_info.get("node_ip")
-
+            success, vm_ip = self.client.getvminfo(inf_id, "0", "net_interface.0.ip")
+            if not success:
+                raise Exception(vm_ip)  # vm_ip contains the error message in this case
         except Exception as e:
             print(f"Error: {e}")
             return "Failed"
 
-        return ip
+        return vm_ip
 
     ########################
     #    Manage tokens     #
@@ -385,12 +388,38 @@ class Apricot_Magics(Magics):
         try:
             self.initialize_im_client()
             success, inf_info = self.client.get_infra_property(inf_id, "contmsg")
+            if not success:
+                raise Exception(inf_info)  # inf_info contains the error message in this case
 
         except Exception as e:
             print(f"Error: {e}")
             return "Failed"
 
         print(inf_info)
+
+    @line_magic
+    def apricot_state(self, line):
+        if not line:
+            return "Usage: `%apricot_state <infrastructure-id>`\n"
+
+        inf_id = line.split()[0]
+
+        try:
+            self.initialize_im_client()
+            success, inf_state = self.client.get_infra_property(inf_id, "state")
+            if not success:
+                raise Exception(inf_state)  # inf_state contains the error message in this case
+        except Exception as e:
+            print(f"Error: {e}")
+            return "Failed"
+
+        print(f'State: {inf_state["state"]}')
+        print(f'{"VM ID":<20} | {"State":<15}')
+        print("-" * 38)
+
+        for vm_id, vm_state in inf_state["vm_states"].items():
+            print(f"{vm_id:<20} | {vm_state:<15}")
+
 
     @line_magic
     def apricot_ls(self, line):
@@ -443,6 +472,8 @@ class Apricot_Magics(Magics):
         try:
             self.initialize_im_client()
             success, inf_info = self.client.getinfo(inf_id)
+            if not success:
+                raise Exception(inf_info)  # inf_info contains the error message in this case
             return list(inf_info)
 
         except Exception as e:
@@ -551,6 +582,8 @@ class Apricot_Magics(Magics):
 
             self.initialize_im_client()
             success, inf_info = self.client.create(inf_desc, desc_type)
+            if not success:
+                raise Exception(inf_info)  # inf_info contains the error message in this case
 
         except Exception as e:
             print(f"Error: {e}")
@@ -617,14 +650,15 @@ class Apricot_Magics(Magics):
             )
 
             success, inf_info = self.client.destroy(inf_id)
+            if not success:
+                raise Exception(inf_info)  # inf_info contains the error message in this case
 
-            if success == True:
-                sys.stdout.write(
-                    "\r" + " " * 80 + "\r"
-                )  # Overwrite the line with spaces
-                sys.stdout.flush()
-                print("Infrastructure with ID " + inf_id + " successfully destroyed.")
-                self.remove_infrastructure_from_list(inf_id)
+            sys.stdout.write(
+                "\r" + " " * 80 + "\r"
+            )  # Overwrite the line with spaces
+            sys.stdout.flush()
+            print("Infrastructure with ID " + inf_id + " successfully destroyed.")
+            self.remove_infrastructure_from_list(inf_id)
 
         except Exception as e:
             print(f"Error: {e}")
@@ -709,6 +743,15 @@ class Apricot_Magics(Magics):
 
         elif word1 == "list":
             return self.apricot_ls("")
+
+        elif word1 == "state":
+            if len(words) != 2:
+                print("Usage: state <infrastructure-id>")
+                return "Fail"
+            else:
+                inf_id = words[1]
+
+            return self.apricot_state(inf_id)
 
         elif word1 == "destroy":
             if len(words) != 2:

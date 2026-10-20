@@ -100,6 +100,9 @@ You can also configure Jupyter to load them automatically.
 - `%apricot_info <infra_id>`:
   Returns the specifications of the given infrastructure.
 
+- `%apricot_state <infra_id>`:
+  Returns the state of the given infrastructure.
+
 <!-- - `%apricot_vmls <infra_id>`:
 Lists the virtual machines and their status of a given infrastructure. -->
 
