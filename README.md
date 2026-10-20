@@ -39,7 +39,7 @@
 
 ## ⚙️ Requirements
 
-A [Jupyter](https://jupyter.org/install) environment (compatible with JupyterLab ≥ 4.0.0).
+A [Jupyter](https://jupyter.org/install) environment with Python 3.9+ and JupyterLab ≥ 4.5.11.
 
 The [Infrastructure Manager (IM)](https://imdocs.readthedocs.io/en/devel/gstarted.html) client must be configured, an open-source virtual infrastructure provisioning tool for multi-Clouds.
 
@@ -144,7 +144,7 @@ This will launch a JupyterLab instance with APRICOT pre-installed.
 ## 🛠 Development Installation
 
 > Note: Node.js is required for building the extension.
-> Note: The `jlpm` command is JupyterLab's pinned version of [yarn](https://yarnpkg.com/) that is installed with JupyterLab.
+> Note: Frontend commands use Corepack to run the Yarn version pinned in `package.json`.
 > Note: These steps are only needed when installing from the source repository for development.
 
 ```bash

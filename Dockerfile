@@ -21,7 +21,7 @@ RUN python3 -m venv $VENV_PATH
 
 # Install packages in the virtual environment
 RUN pip install --upgrade pip \
-    jupyterlab \
+    "jupyterlab>=4.5.11,<5" \
     IM-client \
     tabulate \
     requests \
@@ -30,10 +30,11 @@ RUN pip install --upgrade pip \
     hatchling
 
 
-# Install Node.js v24, Yarn globally and clean up APT cache
+# Install Node.js v24, Corepack and clean up APT cache
 RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
  && apt-get install -y nodejs \
- && npm install -g yarn \
+ && npm install -g corepack@0.36.0 \
+ && corepack enable \
  && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Set the working directory
@@ -43,10 +44,10 @@ WORKDIR /home/apricotlab/
 RUN git clone https://github.com/grycap/apricotlab /home/apricotlab
 
 # Install Node dependencies
-RUN jlpm install
+RUN corepack yarn install --immutable
 
 # Build the extension
-RUN jlpm run build:prod
+RUN corepack yarn run build:prod
 
 # Install Python package
 RUN pip install -ve .
