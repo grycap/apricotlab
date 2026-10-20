@@ -39,10 +39,13 @@ def test_state_prints_aggregate_and_vm_states(magics, monkeypatch, capsys):
     assert result is None
     client.get_infra_property.assert_called_once_with("inf-123", "state")
     output = capsys.readouterr().out
-    assert "State: running" in output
-    assert "VM ID" in output
-    assert "0                    | running" in output
-    assert "1                    | stopped" in output
+    assert output == (
+        "State: running\n"
+        "VM ID | State          \n"
+        "-----------------------\n"
+        "0     | running        \n"
+        "1     | stopped        \n"
+    )
 
 
 def test_state_reports_client_errors(magics, monkeypatch, capsys):

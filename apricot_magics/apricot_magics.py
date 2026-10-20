@@ -232,7 +232,7 @@ class Apricot_Magics(Magics):
     def get_vm_ip(self, inf_id):
         try:
             self.initialize_im_client()
-            success, vm_ip = self.client.getvminfo(inf_id, "0", "net_interface.0.ip")
+            success, vm_ip = self.client.getvminfo(inf_id, "0", "net_interface.1.ip")
             if not success:
                 raise Exception(vm_ip)  # vm_ip contains the error message in this case
         except Exception as e:
@@ -414,11 +414,11 @@ class Apricot_Magics(Magics):
             return "Failed"
 
         print(f'State: {inf_state["state"]}')
-        print(f'{"VM ID":<20} | {"State":<15}')
-        print("-" * 38)
+        print(f'{"VM ID":<5} | {"State":<15}')
+        print("-" * 23)
 
         for vm_id, vm_state in inf_state["vm_states"].items():
-            print(f"{vm_id:<20} | {vm_state:<15}")
+            print(f"{vm_id:<5} | {vm_state:<15}")
 
 
     @line_magic
