@@ -265,62 +265,50 @@ async function createImagesDropdown(
   dropdownContainer: HTMLElement
 ) {
   if (!output) {
-    console.log('Getting OS images...');
-    return;
+    throw new Error('The image command returned no data.');
   }
 
-  // Check if the output contains "error" in the message
+  // Surface errors returned by the IM command through the caller's UI handler.
   if (output.toLowerCase().includes('error')) {
-    console.error(output);
-    Notification.error(
-      'No OS images found. Bad provider credentials or expired token.',
-      {
-        autoClose: 5000
-      }
-    );
+    throw new Error(output.trim());
   }
 
   // Find the first occurrence of '[' and get the substring from there
   const jsonStartIndex = output.indexOf('[');
   const jsonEndIndex = output.lastIndexOf(']') + 1;
   if (jsonStartIndex === -1 || jsonEndIndex === -1) {
-    console.error(
-      'No OS images found. Check provider credentials or valid access token.'
+    throw new Error(
+      'No OS images were returned. Check the provider credentials and access token.'
     );
-    return;
   }
 
   const jsonOutput = output.substring(jsonStartIndex).trim();
 
-  try {
-    const images: { uri: string; name: string }[] = JSON.parse(jsonOutput);
-    imageOptions = images;
-    // console.log('Parsed images:', images);
+  const images: { uri: string; name: string }[] = JSON.parse(jsonOutput);
+  imageOptions = images;
+  // console.log('Parsed images:', images);
 
-    // Clear the dropdown container before appending new content
-    dropdownContainer.innerHTML = '';
-    appendVmImagesTitle(dropdownContainer);
+  // Clear the dropdown container before appending new content
+  dropdownContainer.innerHTML = '';
+  appendVmImagesTitle(dropdownContainer);
 
-    const label = document.createElement('label');
-    label.textContent = 'Image:';
-    label.classList.add('images-label');
-    dropdownContainer.appendChild(label);
+  const label = document.createElement('label');
+  label.textContent = 'Image:';
+  label.classList.add('images-label');
+  dropdownContainer.appendChild(label);
 
-    // Create dropdown menu with image options
-    const select = document.createElement('select');
-    select.id = 'imageDropdown';
-    select.classList.add('dropdown');
-    imageOptions.forEach(image => {
-      const option = document.createElement('option');
-      option.value = image.uri;
-      option.textContent = image.name;
-      select.appendChild(option);
-    });
+  // Create dropdown menu with image options
+  const select = document.createElement('select');
+  select.id = 'imageDropdown';
+  select.classList.add('dropdown');
+  imageOptions.forEach(image => {
+    const option = document.createElement('option');
+    option.value = image.uri;
+    option.textContent = image.name;
+    select.appendChild(option);
+  });
 
-    dropdownContainer.appendChild(select);
-  } catch (error) {
-    console.error('Error getting OS images:', error);
-  }
+  dropdownContainer.appendChild(select);
 }
 
 export async function mergeTOSCARecipes(
@@ -594,8 +582,11 @@ async function createImageDropdown(
       nextBtn.disabled = false;
     }
   } catch (error) {
-    console.error('Error loading image dropdown:', error);
-    dropdownContainer.removeChild(loader);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    Notification.error(`Could not load VM images: ${errorMessage}`, {
+      autoClose: 5000
+    });
+    loader.remove();
   }
 }
 
