@@ -6,7 +6,7 @@
   "@type": "SoftwareSourceCode",
   "identifier": "apricotlab",
   "name": "Apricotlab",
-  "version": "1.0.0",
+  "version": "1.3.0",
   "description": "Advanced Platform for Reproducible Infrastructure in the Cloud via Open Tools for JupyterLab.",
   "license": "GNU General Public License v3.0",
   "author": [
