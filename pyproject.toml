@@ -77,11 +77,11 @@ skip-if-exists = ["apricot/labextension/static/style.js"]
 
 [tool.hatch.build.hooks.jupyter-builder.build-kwargs]
 build_cmd = "build:prod"
-npm = ["corepack", "yarn"]
+npm = ["yarn"]
 
 [tool.hatch.build.hooks.jupyter-builder.editable-build-kwargs]
 build_cmd = "install:extension"
-npm = ["corepack", "yarn"]
+npm = ["yarn"]
 source_dir = "src"
 build_dir = "apricot/labextension"
 
@@ -91,10 +91,10 @@ version_cmd = "hatch version"
 [tool.jupyter-releaser.hooks]
 before-build-npm = [
     "python -m pip install 'jupyterlab>=4.5.11,<5'",
-    "corepack yarn",
-    "corepack yarn build:prod"
+    "yarn",
+    "yarn build:prod"
 ]
-before-build-python = ["corepack yarn clean:all"]
+before-build-python = ["yarn clean:all"]
 
 [tool.check-wheel-contents]
 ignore = ["W002", "W009", "W010"]
