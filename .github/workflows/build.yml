@@ -27,8 +27,8 @@ jobs:
       - name: Lint the extension
         run: |
           set -eux
-          corepack yarn install --immutable
-          corepack yarn run lint:check
+          jlpm install --immutable
+          jlpm run lint:check
 
       - name: Build the extension
         run: |

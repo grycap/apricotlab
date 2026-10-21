@@ -30,11 +30,9 @@ RUN pip install --upgrade pip \
     hatchling
 
 
-# Install Node.js v24, Corepack and clean up APT cache
+# Install Node.js v24 and clean up APT cache
 RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
  && apt-get install -y nodejs \
- && npm install -g corepack@0.36.0 \
- && corepack enable \
  && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Set the working directory
@@ -44,10 +42,10 @@ WORKDIR /home/apricotlab/
 RUN git clone https://github.com/grycap/apricotlab /home/apricotlab
 
 # Install Node dependencies
-RUN corepack yarn install --immutable
+RUN jlpm install
 
 # Build the extension
-RUN corepack yarn run build:prod
+RUN jlpm run build:prod
 
 # Install Python package
 RUN pip install -ve .
